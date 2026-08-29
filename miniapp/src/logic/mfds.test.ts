@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import basic from './__fixtures__/mfds-basic.json';
 import brand from './__fixtures__/mfds-brand.json';
+import divein from './__fixtures__/mfds-divein.json';
 import sunLast from './__fixtures__/mfds-sun-last.json';
 import toner from './__fixtures__/mfds-toner.json';
 import { keepsSnapshot, MFDS_ENDPOINT, parseItems, searchProducts } from './mfds';
@@ -278,12 +279,14 @@ describe('searchProducts', () => {
     vi.stubEnv('VITE_MFDS_KEY', 'a/b=c+d');
     const fetchFn = vi.fn().mockResolvedValue(count(0));
 
-    await searchProducts('수분 토너', signal, fetchFn as unknown as typeof fetch);
+    // ⚠️ 단일 토큰 쿼리다 — 공백 쿼리는 앵커 사다리(§3-1)를 타 `item_name`이 앵커로 바뀐다.
+    // 이 테스트가 재는 것은 인코딩이므로 검증 대상을 재지정한다(v2-3 §4-3 예외 1건).
+    await searchProducts('수분토너', signal, fetchFn as unknown as typeof fetch);
 
     const url = fetchFn.mock.calls[0][0] as string;
     expect(url.startsWith(`${MFDS_ENDPOINT}?`)).toBe(true);
     expect(url).toContain('serviceKey=a%2Fb%3Dc%2Bd');
-    expect(params(fetchFn, 0).get('item_name')).toBe('수분 토너');
+    expect(params(fetchFn, 0).get('item_name')).toBe('수분토너');
     // JSON으로 달라고 해야 한다 — 기본은 XML이고 그러면 파서가 아무것도 못 읽는다.
     expect(params(fetchFn, 0).get('type')).toBe('json');
   });
@@ -352,5 +355,97 @@ describe('searchProducts', () => {
     const fetchFn = vi.fn().mockResolvedValueOnce(count(20)).mockRejectedValueOnce(new TypeError('offline'));
 
     await expect(searchProducts('토너', signal, fetchFn as unknown as typeof fetch)).resolves.toEqual([]);
+  });
+});
+
+/**
+ * 다중 토큰 앵커 사다리(v2-3 §3-1).
+ *
+ * **`item_name` LIKE는 연속 부분문자열만 잡는다** — 보고 품목명엔 공백이 없어서
+ * (「다이브인저분자히알루론산수분버블세럼」) 「토리든 다이브인 세럼」을 통째로 보내면
+ * 구조적으로 0건이다(실측 §2-1). 그래서 **토큰 하나를 앵커로 골라** 보낸다.
+ *
+ * 여기서 잠그는 것 넷: **최장 토큰부터**(브랜드가 앞에 오는 한국어 쿼리에서 첫 토큰 고정은
+ * 0건의 주범이다) · **1자 토큰은 앵커가 아니다**(20만 건 전집에서 앵커 가치가 없는데
+ * 사다리를 거기서 멈춰 세운다) · **프로브 3회 상한**(토큰 폭탄 쿼리에 요청이 폭주한다) ·
+ * **앵커는 원문 케이스 그대로 나간다**(API LIKE의 영문 대소문자 감도는 미실측이다 — 소문자화는
+ * 클라 대조 안에서만 한다).
+ */
+describe('searchProducts — 앵커 사다리(다중 토큰)', () => {
+  const signal = new AbortController().signal;
+
+  beforeEach(() => vi.stubEnv('VITE_MFDS_KEY', 'test-key'));
+  afterEach(() => vi.unstubAllEnvs());
+
+  const names = (fetchFn: ReturnType<typeof vi.fn>) => fetchFn.mock.calls.map((_c, i) => params(fetchFn, i).get('item_name'));
+
+  it('최장 토큰을 첫 앵커로 보낸다 — 긴 토큰일수록 매치가 적어 앵커가 강하다', async () => {
+    const fetchFn = vi.fn().mockResolvedValueOnce(count(17)).mockResolvedValueOnce(ok(divein));
+
+    await searchProducts('토리든 다이브인 세럼', signal, fetchFn as unknown as typeof fetch);
+
+    // 「세럼」(수만 건)도 「토리든」(0건)도 아닌 「다이브인」(17건)이 앵커다.
+    expect(params(fetchFn, 0).get('item_name')).toBe('다이브인');
+  });
+
+  it('앵커가 0건이면 다음 토큰으로 다시 프로브한다 — 길이 내림차순, 동률은 앞선 것부터', async () => {
+    const fetchFn = vi.fn().mockResolvedValueOnce(count(0)).mockResolvedValueOnce(count(0)).mockResolvedValueOnce(count(2)).mockResolvedValueOnce(ok(toner));
+
+    await searchProducts('토리든 다이브인 세럼', signal, fetchFn as unknown as typeof fetch);
+
+    expect(names(fetchFn).slice(0, 3)).toEqual(['다이브인', '토리든', '세럼']);
+  });
+
+  it('1자 토큰은 앵커 후보에서 뺀다 — 광역 프로브가 사다리를 조기 종료시킨다', async () => {
+    const fetchFn = vi.fn().mockResolvedValue(count(0));
+
+    await searchProducts('토리든 다 세럼', signal, fetchFn as unknown as typeof fetch);
+
+    expect(names(fetchFn)).toEqual(['토리든', '세럼']);
+  });
+
+  it('앵커 후보가 전부 1자면 요청 자체를 안 한다', async () => {
+    const fetchFn = vi.fn();
+
+    expect(await searchProducts('가 나', signal, fetchFn as unknown as typeof fetch)).toEqual([]);
+    expect(fetchFn).not.toHaveBeenCalled();
+  });
+
+  it('사다리는 3회에서 멈춘다 — 토큰이 많아도 요청이 폭주하면 안 된다', async () => {
+    const fetchFn = vi.fn().mockResolvedValue(count(0));
+
+    const got = await searchProducts('토리든 다이브인 저분자 수분 세럼', signal, fetchFn as unknown as typeof fetch);
+
+    expect(names(fetchFn)).toEqual(['다이브인', '토리든', '저분자']);
+    // 사다리 전멸은 무음 []다 — 실패를 알리지 않는다(§3-1).
+    expect(got).toEqual([]);
+  });
+
+  it('0건인 앵커에는 본문 요청을 안 붙인다 — 쿼터는 유한하다', async () => {
+    const fetchFn = vi.fn().mockResolvedValueOnce(count(0)).mockResolvedValueOnce(count(17)).mockResolvedValueOnce(ok(divein));
+
+    await searchProducts('토리든 다이브인', signal, fetchFn as unknown as typeof fetch);
+
+    // 프로브(다이브인 0건) → 프로브(토리든) → 본문. 0건 앵커에 본문이 붙으면 4회가 된다.
+    expect(fetchFn).toHaveBeenCalledTimes(3);
+    expect(params(fetchFn, 0).get('numOfRows')).toBe('1');
+    expect(params(fetchFn, 1).get('numOfRows')).toBe('1');
+  });
+
+  it('앵커는 원문 케이스 그대로 나간다 — 소문자화는 클라 대조 안에서만 한다', async () => {
+    // API LIKE의 영문 대소문자 감도는 미실측이다. 낮춰 보내면 잡히던 것이 조용히 0건이 될 수 있다.
+    const fetchFn = vi.fn().mockResolvedValue(count(0));
+
+    await searchProducts('CERA Toner', signal, fetchFn as unknown as typeof fetch);
+
+    expect(names(fetchFn)).toEqual(['Toner', 'CERA']);
+  });
+
+  it('사다리의 모든 요청에 같은 취소 신호를 물린다 — 도중에 취소되면 통째로 멈춘다', async () => {
+    const fetchFn = vi.fn().mockResolvedValueOnce(count(0)).mockResolvedValueOnce(count(17)).mockResolvedValueOnce(ok(divein));
+
+    await searchProducts('토리든 다이브인', signal, fetchFn as unknown as typeof fetch);
+
+    for (const call of fetchFn.mock.calls) expect(call[1].signal).toBe(signal);
   });
 });

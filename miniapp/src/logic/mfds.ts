@@ -149,22 +149,61 @@ async function page(
   }
 }
 
+/** 총 건수만 재는 프로브. **`numOfRows=1`이라 응답이 한 줄이다** — 사다리는 이 호출의 반복이다. */
+async function probe(key: string, anchor: string, signal: AbortSignal, fetchFn: typeof fetch): Promise<number> {
+  const first = await page(key, anchor, 1, 1, signal, fetchFn);
+  const total = first?.body?.totalCount;
+  return typeof total === 'number' && total > 0 ? total : 0;
+}
+
 /**
  * 최신순 제안. **2요청 전략**이다(§3-2) — API에 정렬 파라미터가 없고 기본이 보고일
  * 오름차순(2008년부터)이라, ①`numOfRows=1`로 총 건수를 재고 ②마지막 페이지를 받아 역순으로 준다.
  *
- * ⚠️ 총 건수가 0이면 **두 번째 요청을 안 부른다** — 브랜드명 검색(0건이 정상)이 잦아서
- * 그대로 두면 쿼터의 절반이 빈 응답에 쓰인다.
+ * ⚠️ 총 건수가 0이면 **두 번째 요청을 안 부른다** — 커버리지 밖 검색이 잦아서 그대로 두면
+ * 쿼터의 절반이 빈 응답에 쓰인다.
+ *
+ * **다중 토큰은 앵커 사다리를 탄다**(v2-3 §3-1): `item_name` LIKE가 연속 부분문자열만 잡는데
+ * 보고 품목명엔 공백이 없어서, 「토리든 다이브인 세럼」을 통째로 보내면 구조적으로 0건이다.
+ * 토큰 하나를 앵커로 보내고 나머지는 클라이언트에서 대조한다.
  */
 export async function searchProducts(query: string, signal: AbortSignal, fetchFn: typeof fetch = fetch): Promise<Suggestion[]> {
   const key = import.meta.env.VITE_MFDS_KEY;
   // 키 없는 개발 환경·CI에서는 부르지 않는다 — 콘솔 403 소음만 남는다.
   if (!key) return [];
 
-  const first = await page(key, query, 1, 1, signal, fetchFn);
-  const total = first?.body?.totalCount;
-  if (typeof total !== 'number' || total < 1) return [];
+  const tokens = query.trim().split(/\s+/).filter(Boolean);
 
-  const last = await page(key, query, 10, Math.ceil(total / 10), signal, fetchFn);
-  return parseItems(last).reverse();
+  // 단일 토큰은 현행 경로 그대로다(§3-4) — 라이브 거동을 안 건드린다.
+  if (tokens.length === 1) {
+    const total = await probe(key, tokens[0], signal, fetchFn);
+    if (total < 1) return [];
+    const last = await page(key, tokens[0], 10, Math.ceil(total / 10), signal, fetchFn);
+    return parseItems(last).reverse();
+  }
+
+  /*
+    앵커 후보: **2자 이상 토큰만, 길이 내림차순, 최대 3개.**
+    - 1자 토큰은 20만 건 전집에서 앵커 가치가 없는데, 사다리가 거기서 멈추면 더 나은 토큰에
+      영영 못 간다(기존 「2자 미만 미검색」 규칙과 결이 같다).
+    - 최장 우선인 이유: 한국어 쿼리는 브랜드가 앞이라 첫 토큰 고정은 0건의 주범이다.
+    - 3개 상한: 토큰 폭탄 쿼리에 요청이 폭주하지 않게 한다(검색 1회 ≤ 4요청, §3-6).
+    - ⚠️ 앵커는 **원문 케이스 그대로** 나간다 — API LIKE의 영문 대소문자 감도는 미실측이라
+      낮춰 보내면 잡히던 것이 조용히 0건이 될 수 있다. 소문자화는 클라 대조 안에서만 한다.
+  */
+  const anchors = tokens
+    .filter((t) => t.length >= 2)
+    .sort((a, b) => b.length - a.length)
+    .slice(0, 3);
+
+  for (const anchor of anchors) {
+    const total = await probe(key, anchor, signal, fetchFn);
+    // 0건 앵커에 본문을 붙이면 사다리마다 빈 응답 한 번씩이 쿼터에서 나간다.
+    if (total < 1) continue;
+
+    const body = await page(key, anchor, 10, Math.ceil(total / 10), signal, fetchFn);
+    return parseItems(body).reverse();
+  }
+  // 사다리 전멸 — 무음이다(에러 UI 없음).
+  return [];
 }
