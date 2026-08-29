@@ -53,12 +53,14 @@ export function parseItems(json: unknown, fetchedAt: string = todayKey()): Sugge
     const spf = text(row.SPF);
     const pa = normalizePa(row.PA);
     /*
-      ⚠️ 실소스는 `EE_DOC_DATA`의 **법정 고시 정형문**이다 — `EFFECT_YN1~3`·`EE_NAME`은
-      옛 레코드가 전부 "N", 최근 레코드가 전부 null이라 믿으면 0종이 된다(실측 §2-3).
+      ⚠️ 실소스는 **법정 고시 정형문**이고, 그 문구가 실리는 필드가 둘이다 — `EE_DOC_DATA`와
+      `EE_NAME`은 **상보적**이다(2026-08-30 실측: 「다이브인」 픽스처에서 정확히 한쪽만
+      채워진다, 8/17건이 `EE_NAME` 쪽). 「EE_NAME 사망」은 표본 편향이었다 — 안 태우면 그
+      8건의 뱃지가 통째로 빈다. `EFFECT_YN1~3`은 여전히 죽어 있다(옛 "N"·최근 null).
       XML 파서는 안 만든다. 정형문 감지라 `includes`로 족하고, 화면에 서는 것은
       **문장이 아니라 분류명(명사)뿐이다**(§3-4).
     */
-    const doc = typeof row.EE_DOC_DATA === 'string' ? row.EE_DOC_DATA : '';
+    const doc = [row.EE_DOC_DATA, row.EE_NAME].filter((v) => typeof v === 'string').join(' ');
     const effects: string[] = [];
     if (doc.includes('미백')) effects.push('미백');
     if (doc.includes('주름')) effects.push('주름개선');
@@ -196,7 +198,8 @@ export async function searchProducts(query: string, signal: AbortSignal, fetchFn
     .sort((a, b) => b.length - a.length)
     .slice(0, 3);
 
-  const lower = tokens.map((t) => t.toLowerCase());
+  // 대조 토큰은 `keepsSnapshot`과 **같은 유틸**로 만든다(§3-2) — 규칙이 두 벌이면 드리프트한다.
+  const lower = tokenize(query);
 
   for (const anchor of anchors) {
     const total = await probe(key, anchor, signal, fetchFn);

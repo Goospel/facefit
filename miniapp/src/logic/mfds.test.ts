@@ -97,6 +97,30 @@ describe('parseItems — 기능성 구분(effects)', () => {
     expect(parseItems(basic, FETCHED)[0].snapshot.effects).toEqual([]);
   });
 
+  /**
+   * ⚠️ **「EE_NAME 사망」은 표본 편향이었다**(v2-3 리뷰 실측 — v2-2 설계 §4-1 추기).
+   * 「다이브인」 픽스처에서 두 필드는 **상보적**이다: `EE_NAME`이 채워진 8/17건은
+   * `EE_DOC_DATA`가 null이고 그 반대도 같다. 원문도 같은 고시 정형문이라 같은 감지에
+   * OR로 태운다 — 안 태우면 그 8건의 뱃지가 통째로 빈다(하필 「토리든 다이브인 세럼」의
+   * 1·2순위 제안이 여기 해당한다).
+   */
+  it('EE_DOC_DATA가 null이어도 EE_NAME 고시 문구에서 잡는다 — 두 필드는 상보적이다', () => {
+    const items = parseItems(divein, FETCHED);
+    const serum = items.find((s) => s.itemName === '다이브인저분자히알루론산수분버블세럼');
+
+    // SPF·PA도 null인 레코드다 — 자외선 신호에 업혀 통과할 수 없다.
+    expect(serum?.snapshot).not.toHaveProperty('spf');
+    expect(serum?.snapshot.effects).toEqual(['미백', '주름개선']);
+    // 한 종만 실린 레코드는 한 종만 — 뭉쳐서 붙이지 않는다.
+    expect(items.find((s) => s.itemName === '다이브인포맨저분자히알루론산올인원')?.snapshot.effects).toEqual(['주름개선']);
+  });
+
+  it('EE_NAME이 null이면 EE_DOC_DATA 쪽 거동은 그대로다 — 상보의 반대편', () => {
+    const sun = parseItems(divein, FETCHED).find((s) => s.itemName === '다이브인워터리핏선세럼');
+
+    expect(sun?.snapshot.effects).toEqual(['자외선차단']);
+  });
+
   it('EE_DOC_DATA가 null이어도 SPF가 있으면 자외선차단이다 — 어느 한쪽만 믿으면 구멍이 난다', () => {
     const [got] = parseItems(envelope({ EE_DOC_DATA: null, SPF: '30', PA: null }), FETCHED);
 
@@ -388,7 +412,7 @@ describe('searchProducts — 앵커 사다리(다중 토큰)', () => {
     expect(params(fetchFn, 0).get('item_name')).toBe('다이브인');
   });
 
-  it('앵커가 0건이면 다음 토큰으로 다시 프로브한다 — 길이 내림차순, 동률은 앞선 것부터', async () => {
+  it('앵커가 0건이면 다음 토큰으로 다시 프로브한다 — 길이 내림차순으로 사다리를 탄다', async () => {
     const fetchFn = vi.fn().mockResolvedValueOnce(count(0)).mockResolvedValueOnce(count(0)).mockResolvedValueOnce(count(2)).mockResolvedValueOnce(ok(toner));
 
     await searchProducts('토리든 다이브인 세럼', signal, fetchFn as unknown as typeof fetch);
@@ -539,6 +563,23 @@ describe('searchProducts — 창 이원화 · 대조 · 폴백', () => {
     const fetchFn = vi.fn().mockResolvedValueOnce(count(total)).mockResolvedValueOnce(ok(divein));
 
     expect(await searchProducts('설화수 다이브인', signal, fetchFn as unknown as typeof fetch)).toHaveLength(len);
+  });
+
+  it('대조 토큰도 소문자화한다 — 정규화는 keepsSnapshot과 같은 유틸 한 벌이다', async () => {
+    /*
+      ⚠️ **생존이 앵커 결과의 진부분집합이어야 판별이 선다.** 전멸시키는 예로 재면 전수 창
+      폴백(§3-5)이 앵커 결과를 그대로 돌려줘 소문자화가 죽어도 통과한다(실측으로 이 함정을
+      만나 케이스를 다시 짰다).
+    */
+    const body = envelope(
+      { ITEM_NAME: '세라마이드수분토너', ENTP_NAME: '(주)테스트' },
+      { ITEM_NAME: 'CERAMIDE세라마이드수분크림', ENTP_NAME: '(주)테스트' },
+    );
+    const fetchFn = vi.fn().mockResolvedValueOnce(count(2)).mockResolvedValueOnce(ok(body));
+
+    const got = await searchProducts('세라마이드 CERA', signal, fetchFn as unknown as typeof fetch);
+
+    expect(got.map((s) => s.itemName)).toEqual(['CERAMIDE세라마이드수분크림']);
   });
 
   it('본문이 실패하면 다음 앵커로 안 넘어가고 조용히 끝낸다 — 실패는 전 경로에서 []다', async () => {
