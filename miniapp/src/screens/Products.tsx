@@ -95,6 +95,17 @@ export function Products({
           ))}
         </Section>
       )}
+
+      {/*
+        출처 캡션은 **목록에 한 줄뿐이다**(설계 §4-2) — 카드마다 반복하면 소음이고, 뱃지가
+        선 카드가 하나도 없으면 아예 안 뜬다. 뱃지는 앱의 주장이 아니라 **보고 사실의 인용**이고,
+        인용에는 출처가 따라야 한다(§3-4).
+      */}
+      {products.some((p) => p.mfds) && (
+        <p data-testid="mfds-source" style={{ ...ui.sub, fontSize: 12, margin: '16px 0 0' }}>
+          기능성 표시는 식약처 기능성화장품 보고정보 기준이에요
+        </p>
+      )}
     </main>
   );
 }
@@ -136,6 +147,7 @@ function Row({
           {product.endDate ? `${md(product.startDate)} ~ ${md(product.endDate)}` : `D+${daysBetween(product.startDate, date)}`}
         </span>
       </div>
+      {product.mfds && <MfdsMeta m={product.mfds} />}
       <div style={{ ...ui.row, marginTop: 8 }}>
         <button style={{ ...ui.secondary, flex: 1, padding: '8px 10px' }} onClick={() => onEdit(product)}>
           {`${product.name} 수정`}
@@ -152,6 +164,32 @@ function Row({
           {`${product.name} 삭제`}
         </button>
       </div>
+    </div>
+  );
+}
+
+/**
+ * 등록할 때 박제한 식약처 메타(설계 §4-2·§3-4).
+ *
+ * ⚠️ **명사만 선다.** 뱃지는 식약처가 부여한 법정 분류의 인용이고, 앱이 「미백에 효과 있어요」
+ * 같은 문장을 만드는 순간 화장품법 표시·광고 규제와 v1 §5-3 규율을 동시에 어긴다.
+ * 고시 문구(「…도움을 준다.」)를 그대로 싣지 않는 이유도 같다 — 문장은 앱의 목소리로 읽힌다.
+ *
+ * 이미지 슬롯은 없다 — 어떤 무료 소스에도 제품 이미지가 없어(리서치 확정) 텍스트만으로
+ * 서는 카드가 전제다. 뱃지·칩이 그 밀도를 채운다.
+ */
+function MfdsMeta({ m }: { m: MfdsSnapshot }) {
+  // 「SPF50+ PA++++」. 한쪽만 있으면 그 한쪽만, 둘 다 없으면 칩 자체가 없다(빈 칩 방지).
+  const uv = [m.spf && `SPF${m.spf}`, m.pa && `PA${m.pa}`].filter(Boolean).join(' ');
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
+      {m.entpName && <span style={{ fontSize: 12, color: 'var(--text-sub)' }}>{m.entpName}</span>}
+      {m.effects.map((e) => (
+        <span key={e} style={ui.chip}>
+          {e}
+        </span>
+      ))}
+      {uv && <span style={ui.chip}>{uv}</span>}
     </div>
   );
 }

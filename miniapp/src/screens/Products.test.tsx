@@ -83,6 +83,82 @@ describe('제품 목록', () => {
   });
 });
 
+/**
+ * 카드 메타 — **제품 표시 개선의 본체다**(설계 §4-2).
+ *
+ * ⚠️ 여기서 잠그는 것은 예쁨이 아니라 **표기 규율**이다(§3-4): 화면에 서는 것은 식약처가
+ * 부여한 법정 분류의 **명사**뿐이고, 앱이 문장을 만들지 않는다. 「미백에 효과 있어요」로
+ * 재해석하는 순간 화장품법 표시·광고 규제와 v1 §5-3 규율을 동시에 어긴다.
+ */
+describe('카드의 식약처 메타', () => {
+  const meta = (over: Partial<MfdsSnapshot> = {}): MfdsSnapshot => ({
+    reportSeq: '2026026858',
+    entpName: '데이셀코스메틱(주)',
+    effects: ['미백', '주름개선', '자외선차단'],
+    spf: '50+',
+    pa: '++++',
+    fetchedAt: '2026-08-29',
+    ...over,
+  });
+
+  it('업소명을 브랜드 줄로 보여준다 — 같은 이름의 타사 제품을 가르는 정보다', () => {
+    setup([p({ mfds: meta() })]);
+    expect(screen.getByText('데이셀코스메틱(주)')).toBeTruthy();
+  });
+
+  it('보고된 기능성 구분을 명사 뱃지로 보여준다', () => {
+    setup([p({ mfds: meta() })]);
+    for (const badge of ['미백', '주름개선', '자외선차단']) {
+      expect(screen.getByText(badge), badge).toBeTruthy();
+    }
+  });
+
+  it('SPF·PA는 수치 그대로 붙는다', () => {
+    setup([p({ mfds: meta() })]);
+    expect(screen.getByText('SPF50+ PA++++')).toBeTruthy();
+  });
+
+  it('PA 없는 제품은 SPF만 선다 — 빈 칩이 서면 안 된다', () => {
+    setup([p({ mfds: meta({ pa: undefined }) })]);
+    expect(screen.getByText('SPF50+')).toBeTruthy();
+  });
+
+  it('SPF·PA 둘 다 없으면 그 칩 자체가 없다', () => {
+    const { container } = setup([p({ mfds: meta({ spf: undefined, pa: undefined, effects: ['미백'] }) })]);
+    expect(container.textContent).not.toMatch(/SPF|PA/);
+  });
+
+  it('기능성 구분이 없으면 뱃지 없이 브랜드만 선다', () => {
+    setup([p({ mfds: meta({ effects: [], spf: undefined, pa: undefined }) })]);
+    expect(screen.getByText('데이셀코스메틱(주)')).toBeTruthy();
+    expect(screen.queryByText('미백')).toBeNull();
+  });
+
+  it('수기 제품 카드는 지금과 똑같다 — 메타 줄 유무만 다르다', () => {
+    setup([p({ name: '수기토너' })]);
+    expect(screen.getByText('수기토너')).toBeTruthy();
+    expect(screen.queryByText('데이셀코스메틱(주)')).toBeNull();
+    expect(screen.queryByTestId('mfds-source')).toBeNull();
+  });
+
+  it('출처 캡션은 목록에 딱 한 줄이다 — 카드마다 반복하면 소음이다', () => {
+    setup([p({ id: 'a', name: '선크림하나', mfds: meta() }), p({ id: 'b', name: '토너둘', mfds: meta() })]);
+
+    expect(screen.getAllByTestId('mfds-source')).toHaveLength(1);
+    expect(screen.getByTestId('mfds-source').textContent).toBe('기능성 표시는 식약처 기능성화장품 보고정보 기준이에요');
+  });
+
+  it('뱃지가 문장을 만들지 않는다 — 인용이지 앱의 목소리가 아니다', () => {
+    // ⚠️ 카피 리뷰(§3-4). 고시 문구를 그대로 실으면 「도움을 준다」가 앱의 말로 읽히고,
+    // 재해석은 규제 위반이다. 화면에 서는 것은 분류명(명사)뿐이어야 한다.
+    const { container } = setup([p({ mfds: meta() })]);
+    const textAll = container.textContent ?? '';
+    for (const claim of ['도움을 준다', '도움을 줘요', '보호한다', '효과가 있', '효과 있', '좋아져요', '밝아져요']) {
+      expect(textAll.includes(claim), claim).toBe(false);
+    }
+  });
+});
+
 describe('제품 추가', () => {
   function openForm() {
     const r = setup();
