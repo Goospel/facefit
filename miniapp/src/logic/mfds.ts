@@ -80,3 +80,50 @@ export function parseItems(json: unknown, fetchedAt: string = todayKey()): Sugge
   }
   return out;
 }
+
+/** 한 페이지. **정상 봉투가 아니면 `null`이다** — 부르는 쪽은 그걸 빈손으로만 읽는다. */
+async function page(
+  key: string,
+  query: string,
+  numOfRows: number,
+  pageNo: number,
+  signal: AbortSignal,
+  fetchFn: typeof fetch,
+): Promise<{ body?: { totalCount?: unknown } } | null> {
+  /*
+    ⚠️ `URLSearchParams`로 조립한다 — 발급받는 일반 인증키(Decoding)에 `/`·`+`·`=`가 섞여
+    있어서 날로 이으면 `+`가 공백으로 읽혀 키가 통째로 어긋난다. 어긋난 키의 증상은
+    「제안이 안 뜸」이라 앱 안에서는 구별이 안 된다.
+  */
+  const qs = new URLSearchParams({ serviceKey: key, type: 'json', item_name: query, pageNo: String(pageNo), numOfRows: String(numOfRows) });
+  try {
+    const res = await fetchFn(`${MFDS_ENDPOINT}?${qs}`, { signal });
+    if (!res.ok) return null;
+    const json = (await res.json()) as { header?: { resultCode?: unknown } };
+    // 키 오류·쿼터 초과도 200으로 온다 — 봉투 안의 코드가 유일한 판정이다.
+    return json?.header?.resultCode === '00' ? json : null;
+  } catch {
+    // 오프라인·취소·JSON 파싱 실패. 전부 「제안이 안 뜬다」로 수렴한다(§3-2).
+    return null;
+  }
+}
+
+/**
+ * 최신순 제안. **2요청 전략**이다(§3-2) — API에 정렬 파라미터가 없고 기본이 보고일
+ * 오름차순(2008년부터)이라, ①`numOfRows=1`로 총 건수를 재고 ②마지막 페이지를 받아 역순으로 준다.
+ *
+ * ⚠️ 총 건수가 0이면 **두 번째 요청을 안 부른다** — 브랜드명 검색(0건이 정상)이 잦아서
+ * 그대로 두면 쿼터의 절반이 빈 응답에 쓰인다.
+ */
+export async function searchProducts(query: string, signal: AbortSignal, fetchFn: typeof fetch = fetch): Promise<Suggestion[]> {
+  const key = import.meta.env.VITE_MFDS_KEY;
+  // 키 없는 개발 환경·CI에서는 부르지 않는다 — 콘솔 403 소음만 남는다.
+  if (!key) return [];
+
+  const first = await page(key, query, 1, 1, signal, fetchFn);
+  const total = first?.body?.totalCount;
+  if (typeof total !== 'number' || total < 1) return [];
+
+  const last = await page(key, query, 10, Math.ceil(total / 10), signal, fetchFn);
+  return parseItems(last).reverse();
+}
