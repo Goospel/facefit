@@ -196,13 +196,32 @@ export async function searchProducts(query: string, signal: AbortSignal, fetchFn
     .sort((a, b) => b.length - a.length)
     .slice(0, 3);
 
+  const lower = tokens.map((t) => t.toLowerCase());
+
   for (const anchor of anchors) {
     const total = await probe(key, anchor, signal, fetchFn);
     // 0건 앵커에 본문을 붙이면 사다리마다 빈 응답 한 번씩이 쿼터에서 나간다.
     if (total < 1) continue;
 
-    const body = await page(key, anchor, 10, Math.ceil(total / 10), signal, fetchFn);
-    return parseItems(body).reverse();
+    /*
+      창 이원화(§3-4). **T ≤ 30이면 전수**를 받아 대조가 앵커의 결과를 하나도 안 놓친다 —
+      좁은 창(10건)에 필터까지 얹으면 생존 0이 잦다. 목표 케이스(제품 라인명 앵커,
+      「다이브인」 17건)가 정확히 이 구간이다. 광역 앵커는 최신 30건 창으로 수용한다.
+    */
+    const full = total <= 30;
+    const body = full
+      ? await page(key, anchor, total, 1, signal, fetchFn)
+      : await page(key, anchor, 30, Math.ceil(total / 30), signal, fetchFn);
+
+    const all = parseItems(body).reverse();
+    const hit = all.filter((s) => hasAllTokens(lower, s.itemName, s.snapshot.entpName));
+    /*
+      생존 0의 처리(§3-5). **전수 창이면 앵커 결과를 그대로** 준다 — 대조 전멸은 나머지
+      토큰이 식별에 기여 못 한 것(하우스 브랜드·별명)이고, 앵커 자체가 전집에서 ≤30건인
+      강한 식별자다. 필터가 검색을 현행보다 나쁘게 만드는 유일한 경로를 여기서 막는다.
+      광역 창의 생존 0은 무음 []다 — 무관 제품 도배는 0건보다 나쁘다.
+    */
+    return (hit.length ? hit : full ? all : []).slice(0, 10);
   }
   // 사다리 전멸 — 무음이다(에러 UI 없음).
   return [];

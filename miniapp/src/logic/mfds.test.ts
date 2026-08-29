@@ -449,3 +449,102 @@ describe('searchProducts — 앵커 사다리(다중 토큰)', () => {
     for (const call of fetchFn.mock.calls) expect(call[1].signal).toBe(signal);
   });
 });
+
+/**
+ * 창 이원화 · 클라 대조 · 폴백(v2-3 §3-2·§3-4·§3-5).
+ *
+ * 입력은 **「다이브인」 실응답 픽스처**(17건 — (주)토리든 다수 + 코스모빈(주)·주식회사로리코
+ * 소수)다. 브랜드 토큰이 품목명엔 없고 **업소명에만** 있는 실제 모양이라, 지어낸 봉투로
+ * 재면 이 기능의 근거가 테스트에서 사라진다.
+ *
+ * 여기서 잠그는 것 넷: **T ≤ 30이면 전수 창**(창이 좁은데 필터까지 얹으면 생존 0이 잦다) ·
+ * **대조는 품목명 OR 업소명**(브랜드 토큰은 업소명에만 있다 — 빠지면 기능 자체가 무효다) ·
+ * **전수 창 생존 0이면 앵커 결과 그대로**(하우스 브랜드에서 필터가 검색을 현행보다 나쁘게
+ * 만드는 유일한 경로다) · **광역 창 생존 0은 무음 []**(무관 제품 도배가 0건보다 나쁘다).
+ */
+describe('searchProducts — 창 이원화 · 대조 · 폴백', () => {
+  const signal = new AbortController().signal;
+
+  beforeEach(() => vi.stubEnv('VITE_MFDS_KEY', 'test-key'));
+  afterEach(() => vi.unstubAllEnvs());
+
+  it.each([
+    ['앵커가 17건이면 전수', 17, '17', '1'],
+    ['경계 — 30건도 전수다', 30, '30', '1'],
+    ['31건부터는 광역 — 마지막 페이지', 31, '30', '2'],
+    ['광역 100건의 마지막 페이지', 100, '30', '4'],
+  ])('%s', async (_label, total, rows, pageNo) => {
+    // ⚠️ 경계가 `T < 30`으로 밀리면 딱 30건짜리 앵커가 광역 취급돼 대조가 창 밖을 못 본다.
+    const fetchFn = vi.fn().mockResolvedValueOnce(count(total)).mockResolvedValueOnce(ok(divein));
+
+    await searchProducts('토리든 다이브인 세럼', signal, fetchFn as unknown as typeof fetch);
+
+    expect(params(fetchFn, 1).get('numOfRows')).toBe(rows);
+    expect(params(fetchFn, 1).get('pageNo')).toBe(pageNo);
+  });
+
+  it('「토리든 다이브인 세럼」이 토리든 세럼만 남긴다 — 브랜드 토큰은 업소명에서 맞는다', async () => {
+    /*
+      ⚠️ 이 한 줄이 v2-3의 전부다. 대조에서 업소명 OR가 빠지면 브랜드 토큰이 전멸시켜
+      0건이 되고(기능 무효), 대조 자체가 없으면 코스모빈·로리코 제품이 섞인다.
+    */
+    const fetchFn = vi.fn().mockResolvedValueOnce(count(17)).mockResolvedValueOnce(ok(divein));
+
+    const got = await searchProducts('토리든 다이브인 세럼', signal, fetchFn as unknown as typeof fetch);
+
+    // 역순(최신부터)이다 — 안 뒤집으면 제안이 옛 레코드로 도배된다.
+    expect(got.map((s) => s.itemName)).toEqual([
+      '다이브인저분자히알루론산수분버블세럼',
+      '다이브인프로저분자히알루론산글로우세럼',
+      '다이브인워터리핏선세럼',
+    ]);
+    // 타사 제품(코스모빈(주)의 「…딥다이브인…세럼」, 주식회사로리코의 「레티0.5다이브인세럼」)은 빠진다.
+    expect(got.every((s) => s.snapshot.entpName === '(주)토리든')).toBe(true);
+  });
+
+  it('전수 창에서 생존이 0이면 앵커 결과를 그대로 준다 — 필터가 검색을 나쁘게 만들면 안 된다', async () => {
+    /*
+      하우스 브랜드 시나리오(§3-5): 브랜드명≠법인명이면(설화수→(주)아모레퍼시픽) 브랜드
+      토큰이 어디에도 안 맞아 대조가 전멸시킨다. 앵커 자체가 전집에서 ≤30건인 강한
+      식별자이므로 앵커 결과가 곧 정답 후보다 — 제안 줄에 업소명이 보여 사용자가 판별한다.
+    */
+    const fetchFn = vi.fn().mockResolvedValueOnce(count(17)).mockResolvedValueOnce(ok(divein));
+
+    const got = await searchProducts('설화수 다이브인', signal, fetchFn as unknown as typeof fetch);
+
+    // 전수 창은 최대 30건이 온다 — 제안은 10건으로 자른다(UI 밀도).
+    expect(got).toHaveLength(10);
+    expect(got[0].itemName).toBe('다이브인저분자히알루론산수분버블세럼');
+    // 폴백은 이미 받은 본문의 재사용이다 — 추가 요청 0.
+    expect(fetchFn).toHaveBeenCalledTimes(2);
+  });
+
+  it('광역 창에서 생존이 0이면 무음 빈 목록이다 — 무관 제품 도배가 0건보다 나쁘다', async () => {
+    // 광역 앵커의 최신 30건은 쿼리와 무관한 제품 도배다. 사용자 요구는 「내 제품이 뜨는 것」이다.
+    const fetchFn = vi.fn().mockResolvedValueOnce(count(9000)).mockResolvedValueOnce(ok(divein));
+
+    expect(await searchProducts('설화수 세럼', signal, fetchFn as unknown as typeof fetch)).toEqual([]);
+  });
+
+  it.each([
+    ['30건은 전수 창이라 폴백이 산다', 30, 10],
+    ['31건부터 광역이라 무음이다', 31, 0],
+  ])('경계 — %s', async (_label, total, len) => {
+    /*
+      ⚠️ **요청 파라미터로는 이 경계가 안 잡힌다** — T=30이면 전수(rows=30·pageNo=1)와
+      광역(rows=30·마지막 페이지=1)이 같은 요청이라, 경계를 `T < 30`으로 미는 돌연변이가
+      파라미터 테스트에서 살아남는다(실측으로 살아남아 이 케이스를 보탰다).
+      경계가 실제로 갈리는 자리는 **생존 0의 처리**다.
+    */
+    const fetchFn = vi.fn().mockResolvedValueOnce(count(total)).mockResolvedValueOnce(ok(divein));
+
+    expect(await searchProducts('설화수 다이브인', signal, fetchFn as unknown as typeof fetch)).toHaveLength(len);
+  });
+
+  it('본문이 실패하면 다음 앵커로 안 넘어가고 조용히 끝낸다 — 실패는 전 경로에서 []다', async () => {
+    const fetchFn = vi.fn().mockResolvedValueOnce(count(17)).mockRejectedValueOnce(new TypeError('offline'));
+
+    expect(await searchProducts('토리든 다이브인 세럼', signal, fetchFn as unknown as typeof fetch)).toEqual([]);
+    expect(fetchFn).toHaveBeenCalledTimes(2);
+  });
+});
