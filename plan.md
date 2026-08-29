@@ -17,8 +17,8 @@
 - [x] ✅ **2. photoStore 이식** — `facefit-photos` / `FacePhoto` 타입 (테스트 이식 후 구현)
 - [x] ✅ **3. storage 신설** — 제품·관찰·온보딩 + `todayKey`
 - [x] ✅ **4. 순수 로직** — `logic/products.ts` · `logic/timelapse.ts`
-- [ ] 🔜 **5. FacePhoto 화면** — 고스트 + 플래시 캡처 + 저장 후 관찰 1탭
-- [ ] ⬜ **6. Products 화면** — 목록·추가·수정·종료·삭제
+- [x] ✅ **5. FacePhoto 화면** — 고스트 + 플래시 캡처 + 저장 후 관찰 1탭
+- [ ] 🔜 **6. Products 화면** — 목록·추가·수정·종료·삭제
 - [ ] ⬜ **7. History 화면** — 월간 캘린더 · 날짜 시트 · 사진 모두 삭제
 - [ ] ⬜ **8. Timelapse 화면** — 자동 재생 · 스크럽 · 2× · 제품 구간 바
 - [ ] ⬜ **9. Onboarding + App 배선 + Home** — 3탭 · 전체화면 3종
