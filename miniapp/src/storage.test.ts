@@ -1,12 +1,14 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  isNotifyPrompted,
   isOnboarded,
   loadNotes,
   loadProducts,
   newId,
   PRODUCT_MAX,
   saveNote,
+  saveNotifyPrompted,
   saveOnboarded,
   saveProducts,
   todayKey,
@@ -269,5 +271,37 @@ describe('온보딩 — isOnboarded / saveOnboarded', () => {
   it('저장소가 막혀 있어도 던지지 않는다', () => {
     expect(isOnboarded(fakeStorage({ throwOnGet: true }))).toBe(false);
     expect(() => saveOnboarded(fakeStorage({ throwOnSet: true }))).not.toThrow();
+  });
+});
+
+/**
+ * 알림 동의를 **자동으로 권한 적이 있는가**(설계 §3-2). 동의했는가가 아니다 — 동의 여부의
+ * 단일 출처는 토스이고, 앱에 사본을 두면 사용자가 철회한 순간 반드시 어긋난다.
+ *
+ * 이 플래그가 하는 일은 하나뿐이다: **자동 제안은 딱 한 번**. 거절한 사람에게 매번 다시 묻지 않는다.
+ */
+describe('알림 제안 이력 — isNotifyPrompted / saveNotifyPrompted', () => {
+  it('처음에는 아직 안 물어본 상태다 — 그게 제안을 띄울 유일한 근거다', () => {
+    expect(isNotifyPrompted(fakeStorage())).toBe(false);
+  });
+
+  it('한 번 물어보면 다시 자동으로 묻지 않는다', () => {
+    const s = fakeStorage();
+    saveNotifyPrompted(s);
+    expect(isNotifyPrompted(s)).toBe(true);
+    // 온보딩 플래그와 **다른 칸**이다. 키를 복사해 오면 알림을 한 번 권한 것이 온보딩을
+    // 본 것으로도 읽혀, 고지를 못 본 사람이 곧장 카메라로 간다.
+    expect(isOnboarded(s)).toBe(false);
+  });
+
+  it('엉뚱한 값이 들어 있으면 안 물어본 것으로 친다 — 한 번 더 묻는 쪽이 영영 못 묻는 것보다 낫다', () => {
+    const s = fakeStorage();
+    seed(s, 'facefit.notifyPrompted', 'yes');
+    expect(isNotifyPrompted(s)).toBe(false);
+  });
+
+  it('저장소가 막혀 있어도 던지지 않는다 — 촬영 흐름이 알림 때문에 죽으면 주객전도다', () => {
+    expect(isNotifyPrompted(fakeStorage({ throwOnGet: true }))).toBe(false);
+    expect(() => saveNotifyPrompted(fakeStorage({ throwOnSet: true }))).not.toThrow();
   });
 });

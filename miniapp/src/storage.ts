@@ -17,6 +17,7 @@
 const PRODUCTS_KEY = 'facefit.products';
 const NOTES_KEY = 'facefit.notes';
 const ONBOARDED_KEY = 'facefit.onboarded';
+const NOTIFY_PROMPTED_KEY = 'facefit.notifyPrompted';
 
 /** 제품 상한. 개인이 넘길 수 없는 수다 — 기능 제한이 아니라 **쿼터 방어만** 한다. */
 export const PRODUCT_MAX = 200;
@@ -151,6 +152,30 @@ export function saveOnboarded(storage: Storage = localStorage): void {
     storage.setItem(ONBOARDED_KEY, '1');
   } catch {
     // 읽기와 같은 이유로 삼킨다. 이번 실행에서는 화면 state가 온보딩을 넘겨 준다.
+  }
+}
+
+/**
+ * 알림 동의를 **자동으로 권한 적이 있는가**(설계 §3-2). **동의했는가가 아니다** — 동의 여부의
+ * 단일 출처는 토스이고, 앱에 사본을 두면 사용자가 토스 설정에서 철회한 순간 반드시 어긋난다.
+ *
+ * 이 플래그가 하는 일은 하나뿐이다: 촬영 직후의 **자동 제안은 딱 한 번.** 거절한 사람에게
+ * 매일 다시 묻지 않는다. 엉뚱한 값이면 안 물어본 것으로 친다 — 한 번 더 묻는 쪽이,
+ * 손상된 값 하나 때문에 영영 못 묻는 것보다 낫다(온보딩과 같은 이유로 JSON을 안 쓴다).
+ */
+export function isNotifyPrompted(storage: Storage = localStorage): boolean {
+  try {
+    return storage.getItem(NOTIFY_PROMPTED_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+export function saveNotifyPrompted(storage: Storage = localStorage): void {
+  try {
+    storage.setItem(NOTIFY_PROMPTED_KEY, '1');
+  } catch {
+    // 삼킨다. 여기서 던지면 **촬영 흐름이 알림 때문에 죽는다** — 주객전도다(설계 §3-2).
   }
 }
 
