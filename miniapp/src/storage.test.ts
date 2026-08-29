@@ -294,6 +294,14 @@ describe('알림 제안 이력 — isNotifyPrompted / saveNotifyPrompted', () =>
     expect(isOnboarded(s)).toBe(false);
   });
 
+  it('키는 `facefit.notifyPrompted`다 — 게터·세터가 나란히 오타 나면 아무도 못 잡는다', () => {
+    // 짝지어 쓰고 읽는 테스트만 있으면 **키 오타가 통과한다**(실측: `notifyPromted` 돌연변이가
+    // 292케이스를 전부 살아남았다). 저장된 기록은 앱 업데이트를 건너 살아야 하므로 리터럴로 박는다.
+    const s = fakeStorage();
+    seed(s, 'facefit.notifyPrompted', '1');
+    expect(isNotifyPrompted(s)).toBe(true);
+  });
+
   it('엉뚱한 값이 들어 있으면 안 물어본 것으로 친다 — 한 번 더 묻는 쪽이 영영 못 묻는 것보다 낫다', () => {
     const s = fakeStorage();
     seed(s, 'facefit.notifyPrompted', 'yes');

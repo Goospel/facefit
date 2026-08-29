@@ -126,6 +126,20 @@ describe('알림 동의 요청 — 콜백 해제', () => {
     expect(cleanup).toHaveBeenCalledTimes(1);
   });
 
+  it('해제한 뒤 늦은 신호가 와도 결과는 딱 한 번이다 — 브릿지가 조용히 두 번 답할 수 있다', () => {
+    // 부르는 화면은 이 콜백으로 **흐름을 끝낸다**. 두 번 오면 이미 닫힌 화면을 또 닫거나,
+    // 거절로 끝난 것을 뒤늦게 동의로 뒤집는다.
+    const onDone = vi.fn();
+    requestNotifyAgreement(onDone);
+
+    callbacks().onEvent({ type: 'newAgreement' });
+    callbacks().onError(new Error('늦게 온 오류'));
+
+    expect(onDone).toHaveBeenCalledTimes(1);
+    expect(onDone).toHaveBeenCalledWith(true);
+    expect(cleanup).toHaveBeenCalledTimes(1);
+  });
+
   it('결과가 동기로 와도 해제한다 — cleanup을 손에 쥐기 전에 끝나는 순간이 있다', () => {
     // 브릿지가 즉시 답하면 `onEvent`가 **`requestAgreement`가 돌아오기 전에** 돈다.
     // 그때 순진하게 대입만 하면 그 구독은 영영 안 풀린다.

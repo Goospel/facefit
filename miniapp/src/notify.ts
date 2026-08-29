@@ -50,6 +50,9 @@ export function requestNotifyAgreement(onDone: (agreed: boolean) => void): void 
   let cleanup: (() => void) | null = null;
   let settled = false;
   const finish = (agreed: boolean) => {
+    // ⚠️ 해제한 뒤에도 브릿지가 한 번 더 답할 수 있다(동의 뒤 늦은 오류). 두 번 흘려보내면
+    // 부르는 화면이 이미 끝낸 흐름을 또 끝내거나, 거절로 닫힌 결과가 뒤늦게 뒤집힌다.
+    if (settled) return;
     settled = true;
     cleanup?.();
     cleanup = null;
