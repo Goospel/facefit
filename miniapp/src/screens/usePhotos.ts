@@ -57,6 +57,29 @@ export function usePhotos(idb?: IDBFactory) {
 }
 
 /**
+ * blob URL **여러 개**의 수명 — 타임랩스가 한 화면에서 365장까지 건다.
+ *
+ * `useObjectUrl`을 목록만큼 부를 수 없어서(훅 개수가 렌더마다 달라진다) 따로 둔다.
+ * 규율은 같다: **만든 곳이 revoke까지 책임진다.** 한 장이라도 안 놓으면 화면을 여닫을
+ * 때마다 그만큼씩 조용히 샌다.
+ *
+ * ⚠️ `useMemo`가 아니라 effect다. `useMemo`는 **캐시일 뿐 수명 보장이 아니라서**
+ * React가 값을 버릴 때 revoke가 안 돈다.
+ */
+export function useObjectUrls(blobs: Blob[]): string[] {
+  const [urls, setUrls] = useState<string[]>([]);
+  useEffect(() => {
+    const made = blobs.map((b) => URL.createObjectURL(b));
+    setUrls(made);
+    return () => {
+      made.forEach(URL.revokeObjectURL);
+      setUrls([]);
+    };
+  }, [blobs]);
+  return urls;
+}
+
+/**
  * blob URL 하나의 수명. **만든 곳이 revoke까지 책임진다** — 화면을 닫거나 원본이 바뀌면
  * 즉시 놓아준다. 안 놓으면 사진을 넘길 때마다 새고, 조용히 메모리만 자란다.
  */

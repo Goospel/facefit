@@ -22,6 +22,8 @@
      각 항목의 frontmatter(summary)에서 재생성합니다. 내용을 바꾸려면 그 항목의
      summary를 고치세요(단일 출처). 최신 항목이 위. -->
 
+- [T-003](troubleshooting/T-003.md) · 렌더 뒤에 `vi.useFakeTimers()`를 부르면 이미 걸린 `setTimeout`이 진짜 시계에 남아 「멈추는가」 테스트가 거짓 초록이 된다 — 타이머를 먼저 켜고 렌더하되, 그러면 fake-indexeddb가 붙잡히므로 저장소를 목으로 돌린다
+- [T-002](troubleshooting/T-002.md) · jsdom + fake-indexeddb에서 Blob이 저장소를 왕복하며 평범한 객체가 돼 어휘 검증에 전부 걸린다 — 화면 테스트는 `listPhotos`를 목으로 갈아 끼운다(저장소 자체는 node 환경에서 진짜로 잰다)
 - [T-001](troubleshooting/T-001.md) · 다른 레포에서 파일을 이식하면 줄끝(CRLF)이 새 파일(LF)과 섞여, 나중에 스크립트 제자리 치환이 조용히 0건이 된다 — `.gitattributes`에 `* text=auto eol=lf`를 먼저 박는다
 
 <!-- INDEX:END -->
