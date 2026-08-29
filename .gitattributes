@@ -1,0 +1,11 @@
+# ⚠️ 레포 전체를 LF로 잠근다. 이식 원본(restfit)은 CRLF라 섞이는데, 줄끝이 눈에 안 보여서
+# 「제자리 치환이 0건인데 통과」·「손대지 않은 파일이 통째로 변경으로 뜸」이 조용히 일어난다.
+* text=auto eol=lf
+
+# 셸 훅이 CRLF로 풀리면 셔뱅이 `#!/bin/sh\r`가 되어 훅이 통째로 죽는다
+*.sh text eol=lf
+.githooks/** text eol=lf
+
+# .ps1은 BOM+EOL 보존을 위해 binary 취급
+# (PowerShell 5.1은 BOM 없는 UTF-8을 CP949로 잘못 읽어 한글 리터럴이 깨진다)
+*.ps1 -text
