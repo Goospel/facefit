@@ -21,14 +21,13 @@ const LANE_H = 18;
 export function Timelapse({
   products,
   onClose,
-  idb,
 }: {
   products: Product[];
   onClose: () => void;
-  /** 테스트가 fake-indexeddb를 넣는 자리. 없으면 `globalThis.indexedDB`. */
-  idb?: IDBFactory;
 }) {
-  const { photos } = usePhotos(idb);
+  // ⚠️ `idb` 주입 구멍을 안 둔다 — 이 화면의 테스트는 `openPhotoDb`를 통째로 목으로
+  // 돌린다(T-003: 가짜 타이머가 fake-indexeddb의 이벤트 루프를 붙잡는다).
+  const { photos } = usePhotos();
   const [index, setIndex] = useState(0);
   /** 진입하자마자 돈다 — 「재생」을 한 번 더 누르게 하는 화면이 아니다. */
   const [playing, setPlaying] = useState(true);

@@ -17,17 +17,14 @@ export function Home({
   notes,
   date,
   onShoot,
-  idb,
 }: {
   products: Product[];
   notes: Notes;
   /** 오늘. 「오늘 찍었나」와 「지금 쓰는 제품」이 같은 값을 봐야 한다. */
   date: string;
   onShoot: () => void;
-  /** 테스트가 fake-indexeddb를 넣는 자리. 없으면 `globalThis.indexedDB`. */
-  idb?: IDBFactory;
 }) {
-  const { photos } = usePhotos(idb);
+  const { photos } = usePhotos();
   const todayPhoto = photos.find((p) => p.date === date);
   const todayUrl = useObjectUrl(todayPhoto?.blob);
   const verdict = notes[date];
