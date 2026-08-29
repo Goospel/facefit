@@ -53,12 +53,14 @@ export function parseItems(json: unknown, fetchedAt: string = todayKey()): Sugge
     const spf = text(row.SPF);
     const pa = normalizePa(row.PA);
     /*
-      ⚠️ 실소스는 `EE_DOC_DATA`의 **법정 고시 정형문**이다 — `EFFECT_YN1~3`·`EE_NAME`은
-      옛 레코드가 전부 "N", 최근 레코드가 전부 null이라 믿으면 0종이 된다(실측 §2-3).
+      ⚠️ 실소스는 **법정 고시 정형문**이고, 그 문구가 실리는 필드가 둘이다 — `EE_DOC_DATA`와
+      `EE_NAME`은 **상보적**이다(2026-08-30 실측: 「다이브인」 픽스처에서 정확히 한쪽만
+      채워진다, 8/17건이 `EE_NAME` 쪽). 「EE_NAME 사망」은 표본 편향이었다 — 안 태우면 그
+      8건의 뱃지가 통째로 빈다. `EFFECT_YN1~3`은 여전히 죽어 있다(옛 "N"·최근 null).
       XML 파서는 안 만든다. 정형문 감지라 `includes`로 족하고, 화면에 서는 것은
       **문장이 아니라 분류명(명사)뿐이다**(§3-4).
     */
-    const doc = typeof row.EE_DOC_DATA === 'string' ? row.EE_DOC_DATA : '';
+    const doc = [row.EE_DOC_DATA, row.EE_NAME].filter((v) => typeof v === 'string').join(' ');
     const effects: string[] = [];
     if (doc.includes('미백')) effects.push('미백');
     if (doc.includes('주름')) effects.push('주름개선');
@@ -83,24 +85,40 @@ export function parseItems(json: unknown, fetchedAt: string = todayKey()): Sugge
   return out;
 }
 
+/** 대조 정규화(v2-3 §3-2) — 공백은 없애고 대소문자는 접는다. 표기 차이로 정상 사용을 죽이지 않는다. */
+const norm = (s: string) => s.replace(/\s+/g, '').toLowerCase();
+const tokenize = (s: string) => s.toLowerCase().split(/\s+/).filter(Boolean);
+
 /**
- * 이름을 고쳐도 스냅샷을 그대로 둘 것인가(설계 §3-2 — 리뷰 반영).
+ * **토큰 전부가 품목명 또는 업소명에 부분문자열로 들어가면 참**(v2-3 §3-2).
+ * 검색 필터와 `keepsSnapshot`이 **같이 쓰는 한 벌**이다 — 규칙이 두 벌이면
+ * 「검색에선 잡히는데 수정하면 스냅샷이 떨어지는」 드리프트가 조용히 생긴다.
  *
- * **저장하려는 이름의 공백 토큰이 전부 원본 품목명 안에 있으면 유지, 하나라도 아니면 떨군다.**
- * 「데이셀디아트셀루미너스커버선크림」 → 「데이셀 선크림」(줄여 쓰기)은 살고,
- * 「나이아드 세럼」(갈아치우기)은 죽는다.
+ * ⚠️ **필드별 OR이지 이어 붙인 한 문자열이 아니다.** 이으면 경계에 걸친 토큰
+ * (「수분세럼」+「주식회사…」의 「세럼주식」)이 우연히 매치돼 무관 제품이 섞인다.
+ */
+function hasAllTokens(tokens: string[], itemName: string, entpName: string): boolean {
+  const item = norm(itemName);
+  const entp = norm(entpName);
+  return tokens.length > 0 && tokens.every((t) => item.includes(t) || entp.includes(t));
+}
+
+/**
+ * 이름을 고쳐도 스냅샷을 그대로 둘 것인가(설계 §3-2 — 리뷰 반영. v2-3 §3-3으로 업소명 편입).
+ *
+ * **저장하려는 이름의 공백 토큰이 전부 원본 품목명 또는 업소명 안에 있으면 유지, 하나라도
+ * 아니면 떨군다.** 「데이셀디아트셀루미너스커버선크림」 → 「데이셀 선크림」(줄여 쓰기)은 살고,
+ * 「나이아드 세럼」(갈아치우기)은 죽는다. 업소명 축이 붙어 브랜드로 줄여 쓴 이름
+ * (「토리든 세럼」 ← (주)토리든)도 산다 — 브랜드 검색이 생기면 흔한 패턴이다.
  *
  * ⚠️ 무조건 유지하면 실수로 고른 제품 A 위에 전혀 다른 이름 B를 타이핑해도 A의 업소명·기능성
- * 뱃지가 B 카드에 선다 — 브랜드 검색은 0건이 정상이라 **새 제안이 안 떠 덮어쓸 기회가 없고**,
- * 하필 §3-4가 규제 민감으로 지목한 표시축이다.
+ * 뱃지가 B 카드에 선다 — 하필 §3-4가 규제 민감으로 지목한 표시축이다.
  *
  * 최소 길이 조건은 안 둔다 — 오판은 「남의 이름 토큰이 전부 원본 안에 있는」 희귀 케이스뿐이고
  * 그때의 피해도 뱃지 오표시 하나다. 조건을 늘릴수록 규칙만 어려워진다.
  */
-export function keepsSnapshot(name: string, itemName: string): boolean {
-  const origin = itemName.replace(/\s+/g, '').toLowerCase();
-  const tokens = name.toLowerCase().split(/\s+/).filter(Boolean);
-  return tokens.length > 0 && tokens.every((t) => origin.includes(t));
+export function keepsSnapshot(name: string, snapshot: Pick<MfdsSnapshot, 'itemName' | 'entpName'>): boolean {
+  return hasAllTokens(tokenize(name), snapshot.itemName, snapshot.entpName);
 }
 
 /** 실측 봉투(§2-3). `items`는 `parseItems`가 다시 방어적으로 읽으므로 여기서는 안 본다. */
@@ -133,22 +151,81 @@ async function page(
   }
 }
 
+/** 총 건수만 재는 프로브. **`numOfRows=1`이라 응답이 한 줄이다** — 사다리는 이 호출의 반복이다. */
+async function probe(key: string, anchor: string, signal: AbortSignal, fetchFn: typeof fetch): Promise<number> {
+  const first = await page(key, anchor, 1, 1, signal, fetchFn);
+  const total = first?.body?.totalCount;
+  return typeof total === 'number' && total > 0 ? total : 0;
+}
+
 /**
  * 최신순 제안. **2요청 전략**이다(§3-2) — API에 정렬 파라미터가 없고 기본이 보고일
  * 오름차순(2008년부터)이라, ①`numOfRows=1`로 총 건수를 재고 ②마지막 페이지를 받아 역순으로 준다.
  *
- * ⚠️ 총 건수가 0이면 **두 번째 요청을 안 부른다** — 브랜드명 검색(0건이 정상)이 잦아서
- * 그대로 두면 쿼터의 절반이 빈 응답에 쓰인다.
+ * ⚠️ 총 건수가 0이면 **두 번째 요청을 안 부른다** — 커버리지 밖 검색이 잦아서 그대로 두면
+ * 쿼터의 절반이 빈 응답에 쓰인다.
+ *
+ * **다중 토큰은 앵커 사다리를 탄다**(v2-3 §3-1): `item_name` LIKE가 연속 부분문자열만 잡는데
+ * 보고 품목명엔 공백이 없어서, 「토리든 다이브인 세럼」을 통째로 보내면 구조적으로 0건이다.
+ * 토큰 하나를 앵커로 보내고 나머지는 클라이언트에서 대조한다.
  */
 export async function searchProducts(query: string, signal: AbortSignal, fetchFn: typeof fetch = fetch): Promise<Suggestion[]> {
   const key = import.meta.env.VITE_MFDS_KEY;
   // 키 없는 개발 환경·CI에서는 부르지 않는다 — 콘솔 403 소음만 남는다.
   if (!key) return [];
 
-  const first = await page(key, query, 1, 1, signal, fetchFn);
-  const total = first?.body?.totalCount;
-  if (typeof total !== 'number' || total < 1) return [];
+  const tokens = query.trim().split(/\s+/).filter(Boolean);
 
-  const last = await page(key, query, 10, Math.ceil(total / 10), signal, fetchFn);
-  return parseItems(last).reverse();
+  // 단일 토큰은 현행 경로 그대로다(§3-4) — 라이브 거동을 안 건드린다.
+  if (tokens.length === 1) {
+    const total = await probe(key, tokens[0], signal, fetchFn);
+    if (total < 1) return [];
+    const last = await page(key, tokens[0], 10, Math.ceil(total / 10), signal, fetchFn);
+    return parseItems(last).reverse();
+  }
+
+  /*
+    앵커 후보: **2자 이상 토큰만, 길이 내림차순, 최대 3개.**
+    - 1자 토큰은 20만 건 전집에서 앵커 가치가 없는데, 사다리가 거기서 멈추면 더 나은 토큰에
+      영영 못 간다(기존 「2자 미만 미검색」 규칙과 결이 같다).
+    - 최장 우선인 이유: 한국어 쿼리는 브랜드가 앞이라 첫 토큰 고정은 0건의 주범이다.
+    - 3개 상한: 토큰 폭탄 쿼리에 요청이 폭주하지 않게 한다(검색 1회 ≤ 4요청, §3-6).
+    - ⚠️ 앵커는 **원문 케이스 그대로** 나간다 — API LIKE의 영문 대소문자 감도는 미실측이라
+      낮춰 보내면 잡히던 것이 조용히 0건이 될 수 있다. 소문자화는 클라 대조 안에서만 한다.
+  */
+  const anchors = tokens
+    .filter((t) => t.length >= 2)
+    .sort((a, b) => b.length - a.length)
+    .slice(0, 3);
+
+  // 대조 토큰은 `keepsSnapshot`과 **같은 유틸**로 만든다(§3-2) — 규칙이 두 벌이면 드리프트한다.
+  const lower = tokenize(query);
+
+  for (const anchor of anchors) {
+    const total = await probe(key, anchor, signal, fetchFn);
+    // 0건 앵커에 본문을 붙이면 사다리마다 빈 응답 한 번씩이 쿼터에서 나간다.
+    if (total < 1) continue;
+
+    /*
+      창 이원화(§3-4). **T ≤ 30이면 전수**를 받아 대조가 앵커의 결과를 하나도 안 놓친다 —
+      좁은 창(10건)에 필터까지 얹으면 생존 0이 잦다. 목표 케이스(제품 라인명 앵커,
+      「다이브인」 17건)가 정확히 이 구간이다. 광역 앵커는 최신 30건 창으로 수용한다.
+    */
+    const full = total <= 30;
+    const body = full
+      ? await page(key, anchor, total, 1, signal, fetchFn)
+      : await page(key, anchor, 30, Math.ceil(total / 30), signal, fetchFn);
+
+    const all = parseItems(body).reverse();
+    const hit = all.filter((s) => hasAllTokens(lower, s.itemName, s.snapshot.entpName));
+    /*
+      생존 0의 처리(§3-5). **전수 창이면 앵커 결과를 그대로** 준다 — 대조 전멸은 나머지
+      토큰이 식별에 기여 못 한 것(하우스 브랜드·별명)이고, 앵커 자체가 전집에서 ≤30건인
+      강한 식별자다. 필터가 검색을 현행보다 나쁘게 만드는 유일한 경로를 여기서 막는다.
+      광역 창의 생존 0은 무음 []다 — 무관 제품 도배는 0건보다 나쁘다.
+    */
+    return (hit.length ? hit : full ? all : []).slice(0, 10);
+  }
+  // 사다리 전멸 — 무음이다(에러 UI 없음).
+  return [];
 }

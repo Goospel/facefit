@@ -291,15 +291,19 @@ export function searchProducts(query: string, signal: AbortSignal, fetchFn?: typ
 
 - 키는 `import.meta.env.VITE_MFDS_KEY` — 비어 있으면 `searchProducts`가 즉시 `[]`
   (키 없는 개발 환경·CI에서 앱이 v1처럼 돈다).
-- **`effects` 조립 — 소스는 `EE_DOC_DATA` 문자열 검사다**(실측 §2-3: `EFFECT_YN`·`EE_NAME`은
-  옛 레코드 "N"/최근 레코드 null로 죽어 있다). XML 파서를 안 만든다 — 래핑 방식이 고정이
-  아님이 실측됐고(§2-3: CDATA인 필드도, ARTICLE 속성 평문인 필드도 있다) 고시 정형문
-  감지라 필드 전체 문자열에 `String.includes`로 족하다:
+- **`effects` 조립 — 소스는 `EE_DOC_DATA` **와 `EE_NAME`** 문자열 검사다.**
+  ⚠️ 2026-08-30 추기(v2-3 리뷰 실측): 「`EE_NAME` 사망」은 표본 편향이었다 — 「다이브인」
+  픽스처(mfds-divein.json)에서 두 필드는 **상보적**이다(정확히 한쪽만 채워짐 — `EE_NAME`이
+  채워진 8/17건은 `EE_DOC_DATA`가 null). `EE_NAME` 원문도 같은 고시 정형문(「피부의 미백에
+  도움을 준다. …」)이라 **두 필드를 같은 감지에 OR로 태운다** — 안 태우면 그 8건의 뱃지가
+  통째로 빈다. XML 파서는 여전히 안 만든다 — 래핑 방식이 고정이 아님이 실측됐고(§2-3:
+  CDATA인 필드도, ARTICLE 속성 평문인 필드도 있다) 고시 정형문 감지라 필드 전체 문자열에
+  `String.includes`로 족하다:
   - `'미백'` 포함 → `'미백'` / `'주름'` 포함 → `'주름개선'`
   - `'자외선'` 포함 **또는 `SPF`·`PA` 값 존재** → `'자외선차단'` — 이중 신호를 OR로 쓴다.
     옛 레코드는 SPF/PA가 null이라 문구만, 문구가 비어도 SPF가 있으면 잡힌다(어느 한쪽만
     믿으면 각각 구멍이 난다).
-  - `EE_DOC_DATA` null·비문자열이면 effects는 SPF/PA 신호만으로 조립(빈 배열 허용).
+  - 두 필드 다 null·비문자열이면 effects는 SPF/PA 신호만으로 조립(빈 배열 허용).
 - **PA 정규화(실측: 숫자 "4"로 온다)**: `/^[1-4]$/`면 `'+'.repeat(n)` → `'++++'` /
   이미 `'+'`를 포함한 문자열이면 그대로 / 그 외·null이면 `pa` 부재. SPF는 원문 유지("50+").
 

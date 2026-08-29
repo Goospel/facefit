@@ -263,8 +263,12 @@ function ProductForm({
           style={{ ...ui.input, textAlign: 'left' }}
           value={name}
           onChange={(e) => setName(e.target.value)}
-          /* 품목명에 브랜드 문자열이 대체로 없다(실측 §2-3) — 검색 축을 미리 알려 둔다. */
-          placeholder="예: 수분 토너 (제품명으로 검색돼요)"
+          /*
+            예시 자체가 검색 축을 가르친다(v2-3 §3-7) — 「브랜드 제품명」으로 쳐 보라는 시범이다.
+            ⚠️ 「브랜드로 검색돼요」류 약속 문장은 안 쓴다 — 브랜드명≠법인명인 하우스 브랜드
+            (설화수→(주)아모레퍼시픽)는 여전히 0건일 수 있어 약속하면 거짓이 되는 케이스가 실재한다.
+          */
+          placeholder="예: 토리든 다이브인 세럼"
         />
       </label>
 
@@ -339,7 +343,7 @@ function ProductForm({
                 무조건 유지하면 남의 업소명·기능성 뱃지가 다른 제품 카드에 조용히 선다.
                 추가·수정 폼이 같은 저장 지점을 지나므로 판정도 여기 한 곳이면 된다.
               */
-              mfds: snapshot && keepsSnapshot(name.trim(), snapshot.itemName) ? snapshot : undefined,
+              mfds: snapshot && keepsSnapshot(name.trim(), snapshot) ? snapshot : undefined,
             })
           }
         >
