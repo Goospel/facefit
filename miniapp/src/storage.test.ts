@@ -219,6 +219,7 @@ describe('제품 — loadProducts / saveProducts', () => {
 describe('제품 — 식약처 스냅샷(mfds)', () => {
   const snap = {
     reportSeq: '2026026858',
+    itemName: '데이셀디아트셀루미너스커버선크림',
     entpName: '데이셀코스메틱(주)',
     effects: ['미백', '자외선차단'],
     spf: '50+',
@@ -247,6 +248,9 @@ describe('제품 — 식약처 스냅샷(mfds)', () => {
     ['배열', ['미백']],
     ['null', null],
     ['reportSeq 누락', { ...snap, reportSeq: undefined }],
+    // ⚠️ 이름 수정 시 「줄여 쓰기냐 갈아치우기냐」의 판정 기준이다(§3-2) — 없으면 판정 자체가
+    // 불가능하고, 그 상태로 살려 두면 남의 뱃지가 조용히 남는다.
+    ['itemName 누락', { ...snap, itemName: undefined }],
     ['entpName이 문자열이 아님', { ...snap, entpName: 42 }],
     ['fetchedAt 누락', { ...snap, fetchedAt: undefined }],
     ['effects가 배열이 아님', { ...snap, effects: '미백' }],
@@ -266,7 +270,9 @@ describe('제품 — 식약처 스냅샷(mfds)', () => {
 
   it('SPF·PA 없는 스냅샷은 멀쩡하다 — 선크림이 아닌 제품이 정상 경로다', () => {
     const s = fakeStorage();
-    seed(s, 'facefit.products', [{ ...product(), mfds: { reportSeq: '1', entpName: '(주)피코바이오', effects: [], fetchedAt: '2026-08-29' } }]);
+    seed(s, 'facefit.products', [
+      { ...product(), mfds: { reportSeq: '1', itemName: '더마바이탈나노펩타이드토너', entpName: '(주)피코바이오', effects: [], fetchedAt: '2026-08-29' } },
+    ]);
 
     expect(loadProducts(s)[0].mfds?.entpName).toBe('(주)피코바이오');
   });

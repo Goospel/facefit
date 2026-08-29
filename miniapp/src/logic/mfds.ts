@@ -70,6 +70,8 @@ export function parseItems(json: unknown, fetchedAt: string = todayKey()): Sugge
       itemName,
       snapshot: {
         reportSeq: text(row.COSMETIC_REPORT_SEQ) ?? '',
+        // 원본 품목명을 박제한다 — 나중 수정 세션의 유지 판정 기준이다(§3-2·§3-3).
+        itemName,
         entpName: text(row.ENTP_NAME) ?? '',
         effects,
         ...(spf ? { spf } : null),
@@ -79,6 +81,26 @@ export function parseItems(json: unknown, fetchedAt: string = todayKey()): Sugge
     });
   }
   return out;
+}
+
+/**
+ * 이름을 고쳐도 스냅샷을 그대로 둘 것인가(설계 §3-2 — 리뷰 반영).
+ *
+ * **저장하려는 이름의 공백 토큰이 전부 원본 품목명 안에 있으면 유지, 하나라도 아니면 떨군다.**
+ * 「데이셀디아트셀루미너스커버선크림」 → 「데이셀 선크림」(줄여 쓰기)은 살고,
+ * 「나이아드 세럼」(갈아치우기)은 죽는다.
+ *
+ * ⚠️ 무조건 유지하면 실수로 고른 제품 A 위에 전혀 다른 이름 B를 타이핑해도 A의 업소명·기능성
+ * 뱃지가 B 카드에 선다 — 브랜드 검색은 0건이 정상이라 **새 제안이 안 떠 덮어쓸 기회가 없고**,
+ * 하필 §3-4가 규제 민감으로 지목한 표시축이다.
+ *
+ * 최소 길이 조건은 안 둔다 — 오판은 「남의 이름 토큰이 전부 원본 안에 있는」 희귀 케이스뿐이고
+ * 그때의 피해도 뱃지 오표시 하나다. 조건을 늘릴수록 규칙만 어려워진다.
+ */
+export function keepsSnapshot(name: string, itemName: string): boolean {
+  const origin = itemName.replace(/\s+/g, '').toLowerCase();
+  const tokens = name.toLowerCase().split(/\s+/).filter(Boolean);
+  return tokens.length > 0 && tokens.every((t) => origin.includes(t));
 }
 
 /** 실측 봉투(§2-3). `items`는 `parseItems`가 다시 방어적으로 읽으므로 여기서는 안 본다. */
@@ -94,9 +116,9 @@ async function page(
   fetchFn: typeof fetch,
 ): Promise<Envelope | null> {
   /*
-    ⚠️ `URLSearchParams`로 조립한다 — 발급받는 일반 인증키(Decoding)에 `/`·`+`·`=`가 섞여
-    있어서 날로 이으면 `+`가 공백으로 읽혀 키가 통째로 어긋난다. 어긋난 키의 증상은
-    「제안이 안 뜸」이라 앱 안에서는 구별이 안 된다.
+    ⚠️ `URLSearchParams`로 조립한다 — 발급받는 일반 인증키(Decoding)에는 쿼리에서 뜻을 갖는
+    문자가 섞인다(지금 키는 `/`·`=`, 재발급하면 `+`도 올 수 있다. `+`는 공백으로 읽힌다).
+    날로 이으면 키가 통째로 어긋나고, 그 증상은 「제안이 안 뜸」이라 앱 안에서는 구별이 안 된다.
   */
   const qs = new URLSearchParams({ serviceKey: key, type: 'json', item_name: query, pageNo: String(pageNo), numOfRows: String(numOfRows) });
   try {

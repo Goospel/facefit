@@ -11,7 +11,9 @@ import { Products } from './Products';
  * 여기서 재는 것은 응답의 내용이 아니라 **화면이 검색을 어떻게 다루는가**다.
  */
 const { searchProducts } = vi.hoisted(() => ({ searchProducts: vi.fn() }));
-vi.mock('../logic/mfds', () => ({ searchProducts }));
+// ⚠️ **네트워크만 목이다.** 같은 모듈의 `keepsSnapshot`은 진짜를 쓴다 — 규제 민감한 표시축의
+// 판정을 목으로 갈아 끼우면 화면 테스트가 그 규칙을 아예 안 재게 된다.
+vi.mock('../logic/mfds', async (orig) => ({ ...(await orig<typeof import('../logic/mfds')>()), searchProducts }));
 
 /**
  * 제품 탭 — 수동 CRUD.
@@ -93,6 +95,7 @@ describe('제품 목록', () => {
 describe('카드의 식약처 메타', () => {
   const meta = (over: Partial<MfdsSnapshot> = {}): MfdsSnapshot => ({
     reportSeq: '2026026858',
+    itemName: '데이셀디아트셀루미너스커버선크림',
     entpName: '데이셀코스메틱(주)',
     effects: ['미백', '주름개선', '자외선차단'],
     spf: '50+',
@@ -300,6 +303,7 @@ describe('오늘까지 쓰고 종료', () => {
 describe('제품 이름 자동완성', () => {
   const snap = (over: Partial<MfdsSnapshot> = {}): MfdsSnapshot => ({
     reportSeq: '2026026858',
+    itemName: '데이셀디아트셀루미너스커버선크림',
     entpName: '데이셀코스메틱(주)',
     effects: ['자외선차단'],
     spf: '50+',
@@ -308,7 +312,8 @@ describe('제품 이름 자동완성', () => {
     ...over,
   });
 
-  const suggestion = (itemName: string, over: Partial<MfdsSnapshot> = {}): Suggestion => ({ itemName, snapshot: snap(over) });
+  /** 제안의 품목명과 스냅샷의 원본 이름은 **같은 값이다** — 판정 기준이 여기서 갈린다. */
+  const suggestion = (itemName: string, over: Partial<MfdsSnapshot> = {}): Suggestion => ({ itemName, snapshot: snap({ itemName, ...over }) });
 
   beforeEach(() => {
     vi.useFakeTimers();
@@ -411,7 +416,7 @@ describe('제품 이름 자동완성', () => {
     fireEvent.click(screen.getByRole('button', { name: /선크림하나/ }));
     fireEvent.click(btn('저장'));
 
-    expect(onChange.mock.calls[0][0][0].mfds).toEqual(snap());
+    expect(onChange.mock.calls[0][0][0].mfds).toEqual(snap({ itemName: '선크림하나' }));
   });
 
   it('고른 뒤 이름을 줄여 써도 스냅샷은 남는다 — 품목명이 길어 다듬는 건 정상 사용이다', async () => {
@@ -426,6 +431,37 @@ describe('제품 이름 자동완성', () => {
 
     expect(onChange.mock.calls[0][0][0].name).toBe('데이셀 선크림');
     expect(onChange.mock.calls[0][0][0].mfds).toEqual(snap());
+  });
+
+  it('고른 뒤 다른 제품 이름으로 갈아치우면 스냅샷을 떨군다 — 남의 뱃지가 서면 안 된다', async () => {
+    /*
+      ⚠️ 규제 민감축이다(§3-2·§3-4). 브랜드 검색은 0건이 정상이라 새 제안이 안 떠 **덮어쓸
+      기회가 없다** — 무조건 유지하면 A의 업소명·기능성 뱃지가 B 카드에 조용히 남는다.
+    */
+    searchProducts.mockResolvedValue([suggestion('데이셀디아트셀루미너스커버선크림')]);
+    const { onChange } = openForm();
+    type('선크림');
+    await settle();
+    fireEvent.click(screen.getByRole('button', { name: /데이셀디아트셀루미너스커버선크림/ }));
+
+    type('나이아드 세럼');
+    fireEvent.click(btn('저장'));
+
+    expect(onChange.mock.calls[0][0][0].name).toBe('나이아드 세럼');
+    expect(onChange.mock.calls[0][0][0].mfds).toBeUndefined();
+  });
+
+  it('수정 폼에서 기존 제품 이름을 갈아치워도 스냅샷을 떨군다 — 판정 기준이 스냅샷에 남아 있다', async () => {
+    // 폼 state가 아니라 `mfds.itemName`을 보기 때문에 **나중 수정 세션에도** 판정이 선다(§3-3).
+    const { onChange } = setup([p({ name: '데이셀 선크림', mfds: snap() })]);
+    fireEvent.click(btn('데이셀 선크림 수정'));
+
+    type('나이아드 세럼');
+    fireEvent.click(btn('저장'));
+
+    expect(onChange.mock.calls[0][0][0].mfds).toBeUndefined();
+    // 저장소를 왕복해도 수기 제품이어야 한다.
+    expect(JSON.parse(JSON.stringify(onChange.mock.calls[0][0]))[0]).not.toHaveProperty('mfds');
   });
 
   it('고르지 않고 저장하면 스냅샷이 없다 — 스친 제안이 조용히 붙으면 안 된다', async () => {
@@ -485,9 +521,9 @@ describe('제품 이름 자동완성', () => {
     expect(searchProducts).toHaveBeenCalledTimes(1);
   });
 
-  it('수정해도 원래 스냅샷은 그대로 간다', async () => {
-    const { onChange } = setup([p({ name: '선크림하나', mfds: snap() })]);
-    fireEvent.click(btn('선크림하나 수정'));
+  it('이름을 안 건드리고 수정하면 원래 스냅샷은 그대로 간다', async () => {
+    const { onChange } = setup([p({ name: '데이셀 선크림', mfds: snap() })]);
+    fireEvent.click(btn('데이셀 선크림 수정'));
 
     fireEvent.change(screen.getByLabelText('시작일'), { target: { value: '2026-08-05' } });
     fireEvent.click(btn('저장'));

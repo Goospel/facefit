@@ -4,7 +4,7 @@ import basic from './__fixtures__/mfds-basic.json';
 import brand from './__fixtures__/mfds-brand.json';
 import sunLast from './__fixtures__/mfds-sun-last.json';
 import toner from './__fixtures__/mfds-toner.json';
-import { MFDS_ENDPOINT, parseItems, searchProducts } from './mfds';
+import { keepsSnapshot, MFDS_ENDPOINT, parseItems, searchProducts } from './mfds';
 
 /**
  * 식약처 보고품목 응답 파서(설계 §4-1).
@@ -17,7 +17,22 @@ import { MFDS_ENDPOINT, parseItems, searchProducts } from './mfds';
  * `EE_DOC_DATA` 고시 문구다**(`EFFECT_YN`·`EE_NAME`은 죽어 있다) · **PA는 숫자로 온다**
  * ("4" = PA++++) · **취하된 보고는 제안에 안 세운다.**
  */
-const FETCHED = '2026-08-29';
+/**
+ * ⚠️ **오늘일 수 없는 날짜여야 한다.** 실행일과 같은 값을 쓰면 `fetchedAt` 주입을 통째로
+ * 무시하는 돌연변이가 그날 하루 살아남는다(`storage.ts`의 `todayKey` 함정과 같은 종류 —
+ * 실제로 리뷰에서 이 파일이 그 구멍으로 걸렸다).
+ */
+const FETCHED = '2020-01-01';
+
+/**
+ * 실물 `EE_DOC_DATA` 모양(§2-3). **래핑은 고정이 아니다** — 같은 DOC 포맷이라도 문구가
+ * CDATA에 실리기도, `ARTICLE` 속성에 평문으로 실리기도 한다. 그래서 파서는 XML을 안 읽고
+ * 필드 전체 문자열을 훑는다. 여기서 지어낸 모양으로 재면 그 근거가 테스트에서 사라진다.
+ */
+const eeDoc = (...lines: string[]) =>
+  `\n \n <DOC title="효능효과" type="EE">\n <SECTION title="">\n<ARTICLE title="">\n${lines
+    .map((l) => `<PARAGRAPH tagName="p" textIndent="0" marginLeft="0"><![CDATA[${l}]]></PARAGRAPH>`)
+    .join('\n')}\n  </ARTICLE>\n </SECTION>\n</DOC>\n`;
 
 /** 픽스처 한 건을 복제해 필드만 갈아 끼운다 — 봉투는 실제 모양 그대로 둔다. */
 function envelope(...items: Record<string, unknown>[]) {
@@ -31,6 +46,9 @@ describe('parseItems — 봉투 방어', () => {
 
     expect(got).toHaveLength(1);
     expect(got[0].itemName).toBe('더마바이탈나노펩타이드토너');
+    // 원본 품목명은 스냅샷에도 박제한다 — 나중 수정 세션에서 「줄여 쓰기냐 갈아치우기냐」를
+    // 가릴 기준이 폼 state에만 있으면 그때는 이미 사라지고 없다(§3-3).
+    expect(got[0].snapshot.itemName).toBe('더마바이탈나노펩타이드토너');
     expect(got[0].snapshot.entpName).toBe('(주)피코바이오');
     expect(got[0].snapshot.reportSeq).toBe('2008000083');
     expect(got[0].snapshot.fetchedAt).toBe(FETCHED);
@@ -91,14 +109,14 @@ describe('parseItems — 기능성 구분(effects)', () => {
   });
 
   it('문구에 자외선만 있고 SPF·PA가 없어도 자외선차단이다', () => {
-    const [got] = parseItems(envelope({ EE_DOC_DATA: '<![CDATA[자외선으로부터 피부를 보호한다.]]>', SPF: null, PA: null }), FETCHED);
+    const [got] = parseItems(envelope({ EE_DOC_DATA: eeDoc('자외선으로부터 피부를 보호한다.'), SPF: null, PA: null }), FETCHED);
 
     expect(got.snapshot.effects).toEqual(['자외선차단']);
   });
 
   it('미백·주름개선을 각각 따로 잡는다 — 뭉쳐서 붙이지 않는다', () => {
-    const white = parseItems(envelope({ EE_DOC_DATA: '<![CDATA[피부의 미백에 도움을 준다.]]>' }), FETCHED);
-    const wrinkle = parseItems(envelope({ EE_DOC_DATA: '<![CDATA[피부의 주름개선에 도움을 준다.]]>' }), FETCHED);
+    const white = parseItems(envelope({ EE_DOC_DATA: eeDoc('피부의 미백에 도움을 준다.') }), FETCHED);
+    const wrinkle = parseItems(envelope({ EE_DOC_DATA: eeDoc('피부의 주름개선에 도움을 준다.') }), FETCHED);
 
     expect(white[0].snapshot.effects).toEqual(['미백']);
     expect(wrinkle[0].snapshot.effects).toEqual(['주름개선']);
@@ -133,6 +151,45 @@ describe('parseItems — SPF · PA 표기', () => {
   it('SPF 없는 옛 레코드는 필드 자체가 없다', () => {
     expect(parseItems(toner, FETCHED)[0].snapshot).not.toHaveProperty('spf');
     expect(parseItems(toner, FETCHED)).toHaveLength(2);
+  });
+});
+
+/**
+ * 이름을 고쳤을 때 스냅샷을 그대로 둬도 되는가(설계 §3-2 — 리뷰 반영).
+ *
+ * **줄여 쓰기는 살고 갈아치우기는 죽는다.** 무조건 유지하면 실수로 고른 제품 A 위에 전혀
+ * 다른 이름 B를 타이핑해도(브랜드 검색은 0건이 정상이라 새 제안이 안 떠 덮어쓸 기회가 없다)
+ * A의 업소명·기능성 뱃지가 B 카드에 선다 — §3-4가 규제 민감으로 지목한 표시축이다.
+ */
+describe('keepsSnapshot — 이름 수정 시 스냅샷 유지 판정', () => {
+  const ORIGIN = '데이셀디아트셀루미너스커버선크림';
+
+  it.each([
+    ['그대로', ORIGIN],
+    ['줄여 쓰기 — 토큰이 다 원본 안에 있다', '데이셀 선크림'],
+    ['앞부분만', '데이셀디아트'],
+    ['토큰 순서가 뒤집혀도', '선크림 데이셀'],
+    ['공백이 여러 칸이어도', '데이셀   선크림'],
+  ])('%s이면 유지한다 — 품목명이 길어 다듬는 건 정상 사용이다', (_label, name) => {
+    expect(keepsSnapshot(name, ORIGIN)).toBe(true);
+  });
+
+  it.each([
+    ['다른 제품으로 갈아치움', '나이아드 세럼'],
+    ['한 토큰만 남의 것이어도', '데이셀 세럼'],
+    ['빈 이름', '   '],
+  ])('%s이면 떨군다 — 남의 뱃지가 서면 안 된다', (_label, name) => {
+    expect(keepsSnapshot(name, ORIGIN)).toBe(false);
+  });
+
+  it('원본의 공백과 대소문자는 무시한다 — 표기 차이로 정상 사용을 죽이면 안 된다', () => {
+    /*
+      ⚠️ **토큰이 원본의 공백을 가로지르는 예로 재야 한다.** 공백을 안 지워도 통과하는 예로
+      재면 그 정규화가 죽어도 아무도 못 잡는다(실측으로 살아남아 고쳤다). 「띄어쓰기만 뺀
+      이름」은 흔한 정상 사용인데, 원본 공백을 안 지우면 갈아치우기로 오판된다.
+    */
+    expect(keepsSnapshot('아쿠아토너', '아쿠아 토너 수분')).toBe(true);
+    expect(keepsSnapshot('CERA toner', 'Cera Toner 수분')).toBe(true);
   });
 });
 
@@ -172,6 +229,12 @@ describe('searchProducts', () => {
     // 5948건 / 10 = 595페이지째가 마지막이다.
     expect(params(fetchFn, 1).get('pageNo')).toBe('595');
     expect(got.map((s) => s.itemName)).toEqual(['비오데팡스엑스퍼트슈퍼화이트닝토너', '더마바이탈나노펩타이드토너']);
+    /*
+      ⚠️ 프로덕션 경로는 `parseItems(last)` — **`fetchedAt` 기본 인자를 타는 유일한 자리다.**
+      파서 테스트는 전부 날짜를 주입해서 재기 때문에, 기본값이 `''`로 뭉개져도 아무도 못 잡는다
+      (리뷰에서 실제로 그 돌연변이가 살아남았다). 여기서 형태만 잠근다.
+    */
+    expect(got[0].snapshot.fetchedAt).toMatch(/^\d{4}-\d{2}-\d{2}$/);
   });
 
   it('잔여가 딱 떨어지지 않아도 마지막 페이지를 집는다', async () => {

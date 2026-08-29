@@ -35,6 +35,12 @@ export type Category = (typeof CATEGORIES)[number];
 export type MfdsSnapshot = {
   /** `COSMETIC_REPORT_SEQ` — 제안 구분·향후 재조회 열쇠. */
   reportSeq: string;
+  /**
+   * `ITEM_NAME` 원본 품목명 — 이름을 고쳤을 때 **스냅샷을 유지할지 가르는 기준이다**(설계 §3-2).
+   *
+   * ⚠️ 폼 state가 아니라 여기 두는 이유: 몇 달 뒤 수정 세션에도 비교 기준이 남아 있어야 한다.
+   */
+  itemName: string;
   /** `ENTP_NAME`(업소명) — 카드의 「브랜드」 줄. */
   entpName: string;
   /** 보고된 기능성 구분(`'미백'`·`'주름개선'`·`'자외선차단'`). **명사뿐이다** — 설계 §3-4. */
@@ -118,7 +124,9 @@ function isSnapshot(v: unknown): v is MfdsSnapshot {
   // `Array.isArray`는 안 본다 — JSON 배열은 `reportSeq`를 달고 올 수 없어 바로 아래 줄에서
   // 어차피 걸린다(가드를 얹어 봐야 어떤 입력으로도 안 밟히는 죽은 가지가 된다).
   const m = v as MfdsSnapshot;
-  if (!isText(m.reportSeq) || !isText(m.entpName) || !isText(m.fetchedAt)) return false;
+  // ⚠️ `itemName`이 없으면 이름 수정 시의 유지 판정 자체가 불가능하다(§3-2) — 그 상태로
+  // 살려 두면 갈아치운 이름 위에 남의 뱃지가 조용히 남는다.
+  if (!isText(m.reportSeq) || !isText(m.itemName) || !isText(m.entpName) || !isText(m.fetchedAt)) return false;
   if (!Array.isArray(m.effects) || !m.effects.every(isText)) return false;
   // 없는 것은 정상이다(선크림이 아닌 제품). 있는데 문자열이 아닌 것만 걸러낸다.
   return (m.spf === undefined || isText(m.spf)) && (m.pa === undefined || isText(m.pa));

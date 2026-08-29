@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 
 import { daysBetween } from '../logic/calendar';
-import { searchProducts, type Suggestion } from '../logic/mfds';
+import { keepsSnapshot, searchProducts, type Suggestion } from '../logic/mfds';
 import { CATEGORY_KO, isActive, sortProducts } from '../logic/products';
 import { CATEGORIES, newId, type Category, type MfdsSnapshot, type Product } from '../storage';
 import { ui } from '../ui';
@@ -332,8 +332,14 @@ function ProductForm({
                 `undefined`는 `JSON.stringify`가 떨구므로 저장소 왕복도 깨끗하다.
               */
               endDate: endDate || undefined,
-              // 고른 적이 없으면 `undefined`다 — 수기 등록 그대로다(위 `endDate`와 같은 이유로 명시한다).
-              mfds: snapshot,
+              /*
+                고른 적이 없으면 `undefined`다 — 수기 등록 그대로다(위 `endDate`와 같은 이유로 명시한다).
+
+                ⚠️ **유지는 조건부다**(설계 §3-2): 줄여 쓰기는 살고 갈아치우기는 죽는다.
+                무조건 유지하면 남의 업소명·기능성 뱃지가 다른 제품 카드에 조용히 선다.
+                추가·수정 폼이 같은 저장 지점을 지나므로 판정도 여기 한 곳이면 된다.
+              */
+              mfds: snapshot && keepsSnapshot(name.trim(), snapshot.itemName) ? snapshot : undefined,
             })
           }
         >
