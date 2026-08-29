@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { requestNotifyAgreement } from '../notify';
 import { listPhotos, type FacePhoto as Photo } from '../photoStore';
 import type { Notes, Product } from '../storage';
 import { Home } from './Home';
@@ -19,6 +20,9 @@ vi.mock('../photoStore', async (orig) => ({
   openPhotoDb: vi.fn(async () => ({ close: () => {} }) as unknown as import('../photoStore').PhotoDb),
   listPhotos: vi.fn(),
 }));
+
+/** 알림 동의는 토스 웹뷰 브릿지다 — 여기엔 없다. 래퍼 자체는 `notify.test.ts`가 잰다. */
+vi.mock('../notify', () => ({ requestNotifyAgreement: vi.fn() }));
 
 afterEach(cleanup);
 
@@ -85,6 +89,57 @@ describe('오늘의 관찰 답', () => {
     setup({ photos: [TODAY] });
     await screen.findByAltText('오늘 찍은 사진');
     expect(screen.queryByTestId('today-note')).toBeNull();
+  });
+});
+
+/**
+ * 아침 알림 상시 진입점(설계 §3-2).
+ *
+ * **동의 상태를 앱이 추적하지 않는다** — 단일 출처는 토스다. 그래서 버튼은 늘 같은 자리에
+ * 있고, 이미 동의한 사람이 눌러도 `alreadyAgreed`로 무해하게 끝나며(멱등), 토스 설정에서
+ * **철회한 사람의 재동의 경로를 그대로 겸한다**(철회 감지 기능 없이).
+ */
+describe('아침 알림 진입점', () => {
+  const ASK = '아침 알림 받기';
+  const DONE = '알림 신청됨';
+
+  it('오늘 찍었든 안 찍었든 늘 같은 자리에 있다 — 재동의 경로를 겸한다', async () => {
+    setup();
+    expect(await screen.findByRole('button', { name: ASK })).toBeTruthy();
+
+    cleanup();
+    setup({ photos: [TODAY] });
+    expect(await screen.findByRole('button', { name: ASK })).toBeTruthy();
+  });
+
+  it('누르면 토스 동의 화면을 연다', async () => {
+    setup();
+
+    fireEvent.click(await screen.findByRole('button', { name: ASK }));
+
+    expect(requestNotifyAgreement).toHaveBeenCalledTimes(1);
+  });
+
+  it('동의 결과가 오면 신청됐다고 말한다', async () => {
+    setup();
+    fireEvent.click(await screen.findByRole('button', { name: ASK }));
+
+    const [onDone] = vi.mocked(requestNotifyAgreement).mock.calls[0];
+    act(() => onDone(true));
+
+    expect(screen.getByRole('button', { name: DONE })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: ASK })).toBeNull();
+  });
+
+  it('동의 없이 끝나면(거절·오류) 문구가 그대로다 — 신청되지도 않은 것을 신청됐다고 하지 않는다', async () => {
+    setup();
+    fireEvent.click(await screen.findByRole('button', { name: ASK }));
+
+    const [onDone] = vi.mocked(requestNotifyAgreement).mock.calls[0];
+    act(() => onDone(false));
+
+    expect(screen.getByRole('button', { name: ASK })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: DONE })).toBeNull();
   });
 });
 

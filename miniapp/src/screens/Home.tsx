@@ -1,4 +1,7 @@
+import { useState } from 'react';
+
 import { isActive, sortProducts } from '../logic/products';
+import { requestNotifyAgreement } from '../notify';
 import type { Notes, Product } from '../storage';
 import { ui } from '../ui';
 import { LOCAL_ONLY, useObjectUrl, usePhotos } from './usePhotos';
@@ -25,6 +28,13 @@ export function Home({
   onShoot: () => void;
 }) {
   const { photos } = usePhotos();
+  /**
+   * 방금 이 화면에서 신청했는가. **이 세션 안에서만 산다**(설계 §3-2의 의도된 절단).
+   *
+   * 동의 여부의 단일 출처는 토스다 — 저장해 두면 사용자가 토스 설정에서 철회한 순간
+   * 「신청됨」이 거짓말이 되고, 재동의할 버튼마저 사라진다.
+   */
+  const [notifyAsked, setNotifyAsked] = useState(false);
   const todayPhoto = photos.find((p) => p.date === date);
   const todayUrl = useObjectUrl(todayPhoto?.blob);
   const verdict = notes[date];
@@ -66,6 +76,18 @@ export function Home({
           </>
         )}
       </div>
+
+      {/*
+        상시 진입점이다 — **동의 상태를 보고 숨기지 않는다.** 이미 동의한 사람이 눌러도
+        `alreadyAgreed`로 무해하게 끝나고(멱등), 토스 설정에서 철회한 사람의 재동의 경로를
+        그대로 겸한다(설계 §3-2 — 철회는 앱이 알 수 없다).
+      */}
+      <button
+        style={{ ...ui.ghost, width: '100%', marginTop: 8 }}
+        onClick={() => requestNotifyAgreement((agreed) => agreed && setNotifyAsked(true))}
+      >
+        {notifyAsked ? '알림 신청됨' : '아침 알림 받기'}
+      </button>
 
       <h2 style={{ ...ui.h2, fontSize: 14, color: 'var(--text-sub)', marginTop: 24 }}>{`쓰는 중 ${using.length}`}</h2>
       {using.length === 0 ? (
