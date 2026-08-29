@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { isNotifySupported, requestNotifyAgreement } from '../notify';
 import { listPhotos, type FacePhoto as Photo } from '../photoStore';
 import type { Notes, Product } from '../storage';
 import { Home } from './Home';
@@ -19,6 +20,9 @@ vi.mock('../photoStore', async (orig) => ({
   openPhotoDb: vi.fn(async () => ({ close: () => {} }) as unknown as import('../photoStore').PhotoDb),
   listPhotos: vi.fn(),
 }));
+
+/** 알림 동의는 토스 웹뷰 브릿지다 — 여기엔 없다. 래퍼 자체는 `notify.test.ts`가 잰다. */
+vi.mock('../notify', () => ({ isNotifySupported: vi.fn(), requestNotifyAgreement: vi.fn() }));
 
 afterEach(cleanup);
 
@@ -47,6 +51,8 @@ beforeEach(() => {
   vi.clearAllMocks();
   URL.createObjectURL = vi.fn(() => 'blob:today');
   URL.revokeObjectURL = vi.fn();
+  // 기본은 알림을 받을 수 있는 기기다 — 못 받는 기기는 아래에서 따로 잰다.
+  vi.mocked(isNotifySupported).mockReturnValue(true);
 });
 
 describe('촬영 입구', () => {
@@ -85,6 +91,66 @@ describe('오늘의 관찰 답', () => {
     setup({ photos: [TODAY] });
     await screen.findByAltText('오늘 찍은 사진');
     expect(screen.queryByTestId('today-note')).toBeNull();
+  });
+});
+
+/**
+ * 아침 알림 상시 진입점(설계 §3-2).
+ *
+ * **동의 상태를 앱이 추적하지 않는다** — 단일 출처는 토스다. 그래서 버튼은 늘 같은 자리에
+ * 있고, 이미 동의한 사람이 눌러도 `alreadyAgreed`로 무해하게 끝나며(멱등), 토스 설정에서
+ * **철회한 사람의 재동의 경로를 그대로 겸한다**(철회 감지 기능 없이).
+ */
+describe('아침 알림 진입점', () => {
+  const ASK = '아침 알림 받기';
+  const DONE = '알림 신청됨';
+
+  it('오늘 찍었든 안 찍었든 늘 같은 자리에 있다 — 재동의 경로를 겸한다', async () => {
+    setup();
+    expect(await screen.findByRole('button', { name: ASK })).toBeTruthy();
+
+    cleanup();
+    setup({ photos: [TODAY] });
+    expect(await screen.findByRole('button', { name: ASK })).toBeTruthy();
+  });
+
+  it('알림을 못 받는 기기(구버전 토스·토스 밖)에서는 버튼 자체가 없다', async () => {
+    // 눌러도 열 수 없는 시트다 — 죽은 버튼을 남기면 사용자는 「눌렀는데 아무 일도 없다」를 본다(설계 §3-2).
+    vi.mocked(isNotifySupported).mockReturnValue(false);
+    setup();
+    await screen.findByRole('button', { name: '오늘 얼굴 찍기' });
+
+    expect(screen.queryByRole('button', { name: ASK })).toBeNull();
+  });
+
+  it('누르면 토스 동의 화면을 연다', async () => {
+    setup();
+
+    fireEvent.click(await screen.findByRole('button', { name: ASK }));
+
+    expect(requestNotifyAgreement).toHaveBeenCalledTimes(1);
+  });
+
+  it('동의 결과가 오면 신청됐다고 말한다', async () => {
+    setup();
+    fireEvent.click(await screen.findByRole('button', { name: ASK }));
+
+    const [onDone] = vi.mocked(requestNotifyAgreement).mock.calls[0];
+    act(() => onDone(true));
+
+    expect(screen.getByRole('button', { name: DONE })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: ASK })).toBeNull();
+  });
+
+  it('동의 없이 끝나면(거절·오류) 문구가 그대로다 — 신청되지도 않은 것을 신청됐다고 하지 않는다', async () => {
+    setup();
+    fireEvent.click(await screen.findByRole('button', { name: ASK }));
+
+    const [onDone] = vi.mocked(requestNotifyAgreement).mock.calls[0];
+    act(() => onDone(false));
+
+    expect(screen.getByRole('button', { name: ASK })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: DONE })).toBeNull();
   });
 });
 

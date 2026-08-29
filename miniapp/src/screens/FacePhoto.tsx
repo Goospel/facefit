@@ -2,8 +2,9 @@ import { useEffect, useRef, useState } from 'react';
 
 import { probeCamera, stopStream, type CameraProbeResult, type MediaDevicesLike } from '../camera';
 import { captureJpeg, PREVIEW_TRANSFORM, type Captured } from '../logic/capture';
+import { isNotifySupported, requestNotifyAgreement } from '../notify';
 import { savePhoto } from '../photoStore';
-import { todayKey, type Verdict } from '../storage';
+import { isNotifyPrompted, saveNotifyPrompted, todayKey, type Verdict } from '../storage';
 import { ui } from '../ui';
 import { LOCAL_ONLY, useObjectUrl, usePhotos } from './usePhotos';
 
@@ -89,6 +90,8 @@ export function FacePhoto({
   const [saving, setSaving] = useState(false);
   /** 저장에 성공했다 — 관찰 1문항 단계. **실패하면 절대 여기 안 온다**(설계 §5-1). */
   const [asking, setAsking] = useState(false);
+  /** 관찰까지 끝낸 뒤의 알림 제안 단계. **자동으로는 평생 한 번만 켜진다**(설계 §3-2). */
+  const [suggesting, setSuggesting] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   /** 스트림이 끊겼다. restfit 실기기(iOS 화면 녹화)에서 실제로 터진 상태다. */
   const [down, setDown] = useState(false);
@@ -273,6 +276,46 @@ export function FacePhoto({
   );
 
   /**
+   * 관찰 단계의 출구. 답을 골랐든 건너뛰었든 여기로 온다.
+   *
+   * **딱 한 번, 물어볼 수 있을 때만** 알림 제안이 낀다 — 이미 물어봤거나 이 기기가 알림을
+   * 못 받으면 예전 그대로 곧장 닫힌다. 알림이 촬영 흐름의 문턱이 되면 주객전도다(설계 §3-2).
+   */
+  function endShoot() {
+    if (!isNotifyPrompted() && isNotifySupported()) return setSuggesting(true);
+    onClose();
+  }
+
+  /** 제안 스텝의 두 버튼이 공유하는 것: **어느 쪽을 눌러도 「물어봤다」로 남는다**(재요청 규율). */
+  function answerSuggestion(accepted: boolean) {
+    saveNotifyPrompted();
+    // 동의 화면은 토스가 띄운다 — 결과가 오면(거절·오류 포함) 그때 촬영 흐름을 닫는다.
+    if (accepted) return requestNotifyAgreement(() => onClose());
+    onClose();
+  }
+
+  /**
+   * 알림 제안. **방금 찍은 직후가 「내일도」가 가장 와닿는 순간이다**(설계 §3-2).
+   * 문구는 질문형이고, 거절도 한 번의 탭으로 끝난다 — 그리고 다시는 자동으로 묻지 않는다.
+   */
+  if (suggesting) {
+    return (
+      <main style={{ ...ui.pageFull, justifyContent: 'center' }}>
+        <h2 style={{ ...ui.h2, fontSize: 20, textAlign: 'center' }}>내일도 이 시간에 알려드릴까요?</h2>
+        <p style={{ ...ui.sub, textAlign: 'center' }}>매일 아침 8시에 촬영 알림을 보내드려요.</p>
+        <div style={{ display: 'grid', gap: 8 }}>
+          <button style={ui.primary} onClick={() => answerSuggestion(true)}>
+            알림 받기
+          </button>
+          <button style={ui.ghost} onClick={() => answerSuggestion(false)}>
+            괜찮아요
+          </button>
+        </div>
+      </main>
+    );
+  }
+
+  /**
    * 관찰 1문항. **사진을 방금 찍은 순간이 이 질문에 답할 수 있는 유일한 순간이다**(설계 §1-1).
    * 문구는 질문형이다 — 이 앱은 어디서도 「좋아졌다」를 단정하지 않는다(§6 문구 규율).
    */
@@ -288,7 +331,7 @@ export function FacePhoto({
               style={ui.secondary}
               onClick={() => {
                 onNote(todayKey(), o.verdict);
-                onClose();
+                endShoot();
               }}
             >
               {o.label}
@@ -296,7 +339,7 @@ export function FacePhoto({
           ))}
         </div>
         {/* 건너뛰기 = **아무것도 기록하지 않는다.** 기본값을 대신 채우면 아무 말도 안 한 사람의 답이 섞인다. */}
-        <button style={{ ...ui.ghost, width: '100%', marginTop: 8 }} onClick={onClose}>
+        <button style={{ ...ui.ghost, width: '100%', marginTop: 8 }} onClick={endShoot}>
           건너뛰기
         </button>
       </main>

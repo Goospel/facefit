@@ -6,8 +6,9 @@ import { IDBFactory } from 'fake-indexeddb';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { captureJpeg } from '../logic/capture';
+import { isNotifySupported, requestNotifyAgreement } from '../notify';
 import { listPhotos, openPhotoDb, savePhoto, type FacePhoto as Photo } from '../photoStore';
-import { todayKey } from '../storage';
+import { isNotifyPrompted, saveNotifyPrompted, todayKey } from '../storage';
 import { FacePhoto } from './FacePhoto';
 
 /**
@@ -38,6 +39,9 @@ vi.mock('../logic/capture', async (orig) => ({
   ...(await orig<typeof import('../logic/capture')>()),
   captureJpeg: vi.fn(),
 }));
+
+/** 알림 동의는 토스 웹뷰 브릿지다 — 여기엔 없다. 래퍼 자체는 `notify.test.ts`가 잰다. */
+vi.mock('../notify', () => ({ isNotifySupported: vi.fn(), requestNotifyAgreement: vi.fn() }));
 
 afterEach(cleanup);
 // ⚠️ 가짜 타이머를 쓰는 테스트가 **실패하면** 복구 줄까지 못 가고, 그 뒤 파일 전체가
@@ -132,6 +136,11 @@ beforeEach(() => {
   URL.createObjectURL = vi.fn(() => 'blob:ghost');
   URL.revokeObjectURL = vi.fn();
   visibility('visible');
+  vi.mocked(isNotifySupported).mockReturnValue(true);
+  // 기본은 **알림을 이미 한 번 권한 뒤**의 상태다 — 관찰 답이 곧 종료인 흐름을 나머지
+  // 테스트가 그대로 재게 둔다. 제안 스텝 자체는 「내일 알림 제안」 describe가 잰다.
+  localStorage.clear();
+  saveNotifyPrompted();
 });
 
 function visibility(state: 'visible' | 'hidden') {
@@ -832,6 +841,118 @@ describe('촬영 화면 — 저장 직후 관찰 1문항', () => {
     await screen.findByText('오늘 피부, 어때 보였나요?');
 
     expect(stop).toHaveBeenCalled();
+  });
+});
+
+/**
+ * 관찰까지 끝낸 직후의 알림 제안(설계 §3-2).
+ *
+ * 「방금 찍었다 → 내일도 이 시간에」가 이 제안이 성립하는 유일한 순간이다. **자동 제안은
+ * 딱 한 번**이고, 어느 버튼을 눌렀든 그 사실을 기록해 다시 자동으로 묻지 않는다.
+ *
+ * ⚠️ 여기서 잠그는 것 중 절반은 **안 뜨는 조건**이다 — 촬영 흐름을 푸시가 방해하는 순간
+ * 주객전도라, 이미 물어봤거나 이 기기가 알림을 못 받으면 스텝 자체가 없어야 한다.
+ */
+describe('촬영 화면 — 내일 알림 제안', () => {
+  const ASK = '내일도 이 시간에 알려드릴까요?';
+
+  beforeEach(() => localStorage.clear());
+
+  async function answer(label = '좋아졌어요') {
+    const r = setup();
+    await screen.findByRole('button', { name: '촬영' });
+    vi.useFakeTimers();
+    fireEvent.click(btn('촬영'));
+    await advance(600);
+    vi.useRealTimers();
+    await screen.findByRole('button', { name: '저장' });
+    fireEvent.click(btn('저장'));
+    await screen.findByText('오늘 피부, 어때 보였나요?');
+    fireEvent.click(btn(label));
+    return r;
+  }
+
+  it('관찰까지 끝내면 닫는 대신 내일 알림을 한 번 권한다', async () => {
+    const { onClose, onNote } = await answer();
+
+    expect(await screen.findByText(ASK)).toBeTruthy();
+    // 관찰 답은 이미 기록됐다 — 제안은 그 뒤에 얹히는 것이지 답을 가로채지 않는다.
+    expect(onNote).toHaveBeenCalledTimes(1);
+    expect(onClose).not.toHaveBeenCalled();
+    expect(btn('알림 받기')).toBeTruthy();
+    expect(btn('괜찮아요')).toBeTruthy();
+  });
+
+  it('관찰을 건너뛴 사람에게도 권한다 — 답을 안 한 것과 알림은 별개다', async () => {
+    await answer('건너뛰기');
+    expect(await screen.findByText(ASK)).toBeTruthy();
+  });
+
+  it('「알림 받기」는 토스 동의 화면을 열고, 결과가 와야 닫는다', async () => {
+    const { onClose } = await answer();
+    await screen.findByText(ASK);
+
+    fireEvent.click(btn('알림 받기'));
+
+    expect(requestNotifyAgreement).toHaveBeenCalledTimes(1);
+    // 시트가 뜨기도 전에 닫으면 사용자는 무엇에 답하는지 모른 채 남는다.
+    expect(onClose).not.toHaveBeenCalled();
+
+    const [onDone] = vi.mocked(requestNotifyAgreement).mock.calls[0];
+    act(() => onDone(true));
+
+    expect(onClose).toHaveBeenCalled();
+  });
+
+  it('동의하지 않고 끝나도(거절·오류) 촬영 흐름은 그대로 끝난다', async () => {
+    // 설계 §3-2: 실패는 조용히 접는다 — 알림이 안 되는 것이 촬영을 붙잡는 이유가 될 수 없다.
+    const { onClose } = await answer();
+    await screen.findByText(ASK);
+    fireEvent.click(btn('알림 받기'));
+
+    const [onDone] = vi.mocked(requestNotifyAgreement).mock.calls[0];
+    act(() => onDone(false));
+
+    expect(onClose).toHaveBeenCalled();
+  });
+
+  it('「괜찮아요」는 동의 화면을 안 열고 그냥 닫는다', async () => {
+    const { onClose } = await answer();
+    await screen.findByText(ASK);
+
+    fireEvent.click(btn('괜찮아요'));
+
+    expect(requestNotifyAgreement).not.toHaveBeenCalled();
+    expect(onClose).toHaveBeenCalled();
+  });
+
+  it.each(['알림 받기', '괜찮아요'])('%s — 어느 쪽을 눌러도 물어본 것으로 기록한다', async (label) => {
+    // 거절한 사람에게 내일도 모레도 다시 묻는 앱이 되면 안 된다(재요청 규율).
+    await answer();
+    await screen.findByText(ASK);
+
+    fireEvent.click(btn(label));
+
+    expect(isNotifyPrompted()).toBe(true);
+  });
+
+  it('이미 한 번 물어봤으면 스텝 없이 곧장 닫는다', async () => {
+    saveNotifyPrompted();
+    const { onClose } = await answer();
+
+    expect(onClose).toHaveBeenCalled();
+    expect(screen.queryByText(ASK)).toBeNull();
+  });
+
+  it('알림을 못 받는 기기(구버전 토스)에서는 스텝 자체가 안 뜬다', async () => {
+    // 물어봐야 열 수 없는 시트다 — 묻는 것 자체가 촬영 흐름에 낀 군더더기가 된다.
+    vi.mocked(isNotifySupported).mockReturnValue(false);
+    const { onClose } = await answer();
+
+    expect(onClose).toHaveBeenCalled();
+    expect(screen.queryByText(ASK)).toBeNull();
+    // 물어보지도 못한 것을 「물어봤다」로 남기면, 나중에 앱을 업데이트해도 영영 안 묻는다.
+    expect(isNotifyPrompted()).toBe(false);
   });
 });
 
