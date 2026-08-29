@@ -338,10 +338,43 @@ describe('제품 이름 자동완성', () => {
 
   const type = (value: string) => fireEvent.change(screen.getByLabelText('제품 이름'), { target: { value } });
 
-  it('무엇으로 검색되는지 placeholder가 미리 알린다 — 브랜드명은 0건이 정상이다', () => {
-    // 품목명에 브랜드 문자열이 대체로 없다(실측 §2-3). 기대치를 미리 맞춰 두는 한 줄이다.
+  it('placeholder 예시가 검색 축을 가르친다 — 「브랜드 제품명」으로 쳐 보라는 시범이다', () => {
+    /*
+      v2-3 §3-7. 예시 자체가 가르침이다 — 옛 문구(「예: 수분 토너 (제품명으로 검색돼요)」)는
+      브랜드 0건을 전제한 기대치 설계였고, 하필 예시 「수분 토너」가 공백 쿼리라 당시 구현에서
+      정작 0건이 나는 자기모순이었다.
+    */
     openForm();
-    expect((screen.getByLabelText('제품 이름') as HTMLInputElement).placeholder).toMatch(/제품명으로 검색/);
+    expect((screen.getByLabelText('제품 이름') as HTMLInputElement).placeholder).toBe('예: 토리든 다이브인 세럼');
+  });
+
+  it('placeholder에 약속 문장을 쓰지 않는다 — 하우스 브랜드는 여전히 0건일 수 있다', () => {
+    // 「브랜드로 검색돼요」는 실제로 거짓이 되는 케이스가 있다(설화수→(주)아모레퍼시픽, §2-5).
+    openForm();
+    const { placeholder } = screen.getByLabelText('제품 이름') as HTMLInputElement;
+    for (const promise of ['검색돼요', '찾아드', '검색됩니다']) expect(placeholder.includes(promise), promise).toBe(false);
+  });
+
+  it('브랜드+제품명으로 찾아 고르고 브랜드로 줄여 써도 스냅샷이 남는다 — v2-3의 통합 경로', async () => {
+    /*
+      ⚠️ 여기만 실제 `keepsSnapshot`을 탄다(네트워크만 목이다). 검색이 브랜드로 되기 시작하면
+      「토리든 세럼」식 줄여 쓰기가 흔해지는데, 유지 판정이 업소명을 안 보면 고른 직후
+      이름을 다듬는 순간 뱃지가 조용히 떨어진다(§3-3).
+    */
+    const toriden = suggestion('다이브인저분자히알루론산수분버블세럼', { entpName: '(주)토리든' });
+    searchProducts.mockResolvedValue([toriden]);
+    const { onChange } = openForm();
+
+    type('토리든 다이브인 세럼');
+    await settle();
+    expect(searchProducts.mock.calls[0][0]).toBe('토리든 다이브인 세럼');
+
+    fireEvent.click(screen.getByRole('button', { name: /다이브인저분자히알루론산수분버블세럼/ }));
+    type('토리든 세럼');
+    fireEvent.click(btn('저장'));
+
+    expect(onChange.mock.calls[0][0][0].name).toBe('토리든 세럼');
+    expect(onChange.mock.calls[0][0][0].mfds).toEqual(toriden.snapshot);
   });
 
   it('한 자만 치면 안 부른다 — 20만 건에 한 글자는 검색이 아니다', async () => {
