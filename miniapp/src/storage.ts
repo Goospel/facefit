@@ -25,6 +25,28 @@ export const PRODUCT_MAX = 200;
 export const CATEGORIES = ['cleanser', 'toner', 'serum', 'cream', 'sunscreen', 'mask', 'etc'] as const;
 export type Category = (typeof CATEGORIES)[number];
 
+/**
+ * 등록 시점에 식약처 보고품목 API에서 받아 **박제한** 메타(설계 §3-3).
+ *
+ * ⚠️ **재조회하지 않는다.** 열람할 때마다 다시 부르면 오프라인에서 카드가 깨지고, 호출 0이던
+ * 열람 경로에 네트워크가 스민다. 보고 데이터는 사실상 불변(보고 이력)이라 부패 리스크도 낮다 —
+ * 대신 `fetchedAt`으로 「언제 것인지」만 정직하게 남긴다.
+ */
+export type MfdsSnapshot = {
+  /** `COSMETIC_REPORT_SEQ` — 제안 구분·향후 재조회 열쇠. */
+  reportSeq: string;
+  /** `ENTP_NAME`(업소명) — 카드의 「브랜드」 줄. */
+  entpName: string;
+  /** 보고된 기능성 구분(`'미백'`·`'주름개선'`·`'자외선차단'`). **명사뿐이다** — 설계 §3-4. */
+  effects: string[];
+  /** 원문 그대로(`'50+'`). 카드가 `SPF` 접두어를 붙인다. */
+  spf?: string;
+  /** 파서가 편 `'+'` 문자열(원문은 숫자 `"4"`). */
+  pa?: string;
+  /** `'YYYY-MM-DD'`. 스냅샷 원칙의 정직한 표기다. */
+  fetchedAt: string;
+};
+
 export type Product = {
   /** `newId()`. 목록 key이자 삭제·수정의 지목 대상이라 없으면 그 줄을 손댈 방법이 없다. */
   id: string;
@@ -34,6 +56,8 @@ export type Product = {
   startDate: string;
   /** 없으면 「사용 중」. `startDate`보다 앞이면 로드에서 이것만 버린다. */
   endDate?: string;
+  /** 없으면 수기 등록 제품이다 — **v1 데이터 전부가 이 상태다.** */
+  mfds?: MfdsSnapshot;
 };
 
 /**
