@@ -1,0 +1,29 @@
+{
+  "name": "facefit-miniapp",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "build:dev": "tsc -b && vite build --mode development",
+    "test": "vitest run",
+    "release": "npm run build && ait build",
+    "release:dev": "npm run build:dev && ait build"
+  },
+  "dependencies": {
+    "@apps-in-toss/web-framework": "^3.0.4",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@testing-library/react": "^16.3.2",
+    "@types/react": "^18",
+    "@types/react-dom": "^18",
+    "@vitejs/plugin-react": "^5",
+    "fake-indexeddb": "^6.2.5",
+    "jsdom": "^29.1.1",
+    "typescript": "^5",
+    "vite": "^6",
+    "vitest": "^4"
+  }
+}

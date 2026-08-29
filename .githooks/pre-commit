@@ -1,0 +1,89 @@
+#!/bin/sh
+# pre-commit — troubleshooting 목차가 stale하거나 항목 형식이 어긋나면 커밋을 거부한다.
+#
+# 왜 검사기가 필요한가:
+#   목차는 각 항목의 summary 를 **이중 기재**했다. 그래서 본문만 갱신되고 목차가 stale 로
+#   남는 drift 가 반복됐다 — 실측: 목차가 12 에 얼어붙은 채 본문이 15→18 까지 자랐고
+#   (b48e6e0·83b5217·e2c68ee·62450c8 — 4커밋·6항목 연속), 규칙 감사 PR(#42)이 작정하고
+#   뒤져서야 복구됐다. 5개 PR 동안 아무도 몰랐다. 확인할 방법이 없었기 때문이다.
+#
+#   그리고 그 감사조차 「이 프로젝트에서 이미 알고 있는 전제」 섹션이 20커밋째 목차 밖에
+#   있는 걸 못 잡았다 — 감사가 `^## T-` 만 봤기 때문이다. **검사기가 있어도, 검사기가 고른
+#   축 바깥은 100% 준수로 보이면서 썩는다.** 그래서 목차를 `ls` 로 바꿨다(항목 1건 = 파일
+#   1개). 파일시스템은 축을 고를 수 없다 — 파일이 있으면 목록에 뜬다.
+#
+#   T-041 이 같은 계열을 이미 증명했다: 소프트 규칙은 100% 준수되면서 목적만 증발한다.
+#   그래서 규약에 검사기를 같이 만든다.
+#
+# 설치 (clone 후 1회):
+#   git config core.hooksPath .githooks
+#
+# 해제: git config --unset core.hooksPath
+#
+# ⚠️ EOL: 이 파일은 반드시 LF 여야 한다. .gitattributes 의 `.githooks/** text eol=lf` 가
+#    강제한다 — CRLF 로 풀리면 셔뱅이 `#!/bin/sh\r` 가 되어 훅이 통째로 죽는다(T-046).
+
+HUB="claude-docs/troubleshooting.md"
+SCRIPT="scripts/rebuild-troubleshooting-index.ps1"
+
+# troubleshooting 을 안 건드리는 커밋에선 돌지 않는다(매 커밋마다 PowerShell 을 띄우지 않기).
+if ! git diff --cached --name-only | grep -q '^claude-docs/troubleshooting'; then
+  exit 0
+fi
+
+[ -f "$HUB" ] || exit 0
+[ -f "$SCRIPT" ] || exit 0
+
+# PowerShell 을 못 찾으면 검사를 **못 한 것**이지 통과한 게 아니다.
+# 조용히 지나가면 T-045/T-046 계열이 된다("있는 줄 아는데 조용히 없는 것") → 크게 알린다.
+if ! command -v powershell.exe >/dev/null 2>&1; then
+  echo "" >&2
+  echo "  ⚠️  powershell.exe 를 못 찾아 troubleshooting 목차 검사를 건너뜁니다." >&2
+  echo "     검사가 통과한 게 아니라 **돌지 않았습니다**. 목차가 stale 할 수 있습니다." >&2
+  echo "     수동 확인: powershell -File $SCRIPT -HubPath $HUB -Check" >&2
+  echo "" >&2
+  exit 0
+fi
+
+# -ExecutionPolicy Bypass 가 필요하다. Git Bash 에서 powershell.exe 를 부르면 기본 정책
+# (Restricted)이 걸려 **스크립트를 로드조차 못 한다** — 실제로 이 훅의 첫 실전에서 났다.
+OUT=$(powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$SCRIPT" -HubPath "$HUB" -Check 2>&1)
+STATUS=$?
+
+# ⚠️ positive control (T-045): "검사에 걸린 것"과 "검사를 못 한 것"을 구분해야 한다.
+#    스크립트가 로드조차 안 되면 exit != 0 이 나오는데, 그걸 stale 로 보고하면 원인을
+#    엉뚱한 데서 찾게 된다 — 첫 실전에서 ExecutionPolicy 오류를 "목차가 stale"로 보고했다.
+#    스크립트는 어느 종료 경로에서도 `INDEX-CHECK: <상태>` 를 출력한다. 없으면 안 돈 것이다.
+#
+# ⚠️ 마커가 **ASCII** 인 이유: PowerShell 5.1 이 콘솔로 내보내는 한글은 CP949 라 여기서
+#    깨진다(`목차` → `������`). 실제로 이 훅의 두 번째 시도에서 한글 매칭이 실패해
+#    "검사가 안 돌았다"고 오판했다 — 스크립트는 멀쩡히 돌고 있었다. 사람이 읽는 문장은
+#    한글로 두되 **기계 판정은 ASCII 마커로** 한다(글로벌 규칙 2의 출력판).
+case "$OUT" in
+  *INDEX-CHECK:*) ;;
+  *)
+    echo "" >&2
+    echo "$OUT" | sed 's/^/     /' >&2
+    echo "" >&2
+    echo "  ⚠️  검사 스크립트가 실행되지 않았습니다 — stale 여부를 **확인하지 못했습니다**." >&2
+    echo "     (검사에 걸린 게 아니라, 검사가 돌지 않았습니다. 위 출력을 보세요.)" >&2
+    echo "     수동 확인: powershell -ExecutionPolicy Bypass -File $SCRIPT -HubPath $HUB -Check" >&2
+    echo "" >&2
+    exit 1
+    ;;
+esac
+
+if [ $STATUS -ne 0 ]; then
+  echo "" >&2
+  echo "$OUT" | sed 's/^/  /' >&2
+  echo "" >&2
+  echo "  ❌ troubleshooting 목차·항목 검사에 걸렸습니다." >&2
+  echo "     목차는 자동 생성입니다 — 손으로 고치지 말고 아래를 돌리세요:" >&2
+  echo "" >&2
+  echo "       powershell -ExecutionPolicy Bypass -File $SCRIPT -HubPath $HUB" >&2
+  echo "       git add $HUB" >&2
+  echo "" >&2
+  exit 1
+fi
+
+exit 0

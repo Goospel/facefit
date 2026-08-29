@@ -1,3 +1,19 @@
-.commit-msg-tmp
 node_modules/
 dist/
+coverage/
+*.tsbuildinfo
+
+# 머신마다 다르다 (preview_start용)
+.claude/launch.json
+
+# T-026 — PowerShell 5.1 한글 커밋 메시지 회피용 임시 파일
+.commit-msg-tmp
+.pr-body-tmp
+
+# 앱인토스 배포 아티팩트 — `ait build`가 만드는 번들. dist/를 통째로 담은 산출물이라 커밋하지 않는다
+*.ait
+
+# 스크래치
+*.log
+.DS_Store
+Thumbs.db
