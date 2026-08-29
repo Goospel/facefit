@@ -103,6 +103,27 @@ export function newId(): string {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
+const isText = (v: unknown): v is string => typeof v === 'string';
+
+/**
+ * 스냅샷이 화면에 세워도 되는 모양인가(설계 §3-3). **검증 등급은 「표시용」이다** —
+ * 어긋나면 `mfds`만 버리고 레코드는 산다(카테고리 강등과 같은 급). 제품 기록이 본체고
+ * API 메타는 장식이라, 여기서 레코드째 기각하면 메타 오류 하나에 기간 기록이 통째로 증발한다.
+ *
+ * ⚠️ 타입까지 보는 이유는 **화면이 이 값을 그대로 그리기 때문이다** — 객체가 섞여 들어오면
+ * React가 렌더에서 던져 제품 탭이 죽는다. 「살리는 방어」가 죽이는 방어로 뒤집히는 자리다.
+ */
+function isSnapshot(v: unknown): v is MfdsSnapshot {
+  if (typeof v !== 'object' || v === null) return false;
+  // `Array.isArray`는 안 본다 — JSON 배열은 `reportSeq`를 달고 올 수 없어 바로 아래 줄에서
+  // 어차피 걸린다(가드를 얹어 봐야 어떤 입력으로도 안 밟히는 죽은 가지가 된다).
+  const m = v as MfdsSnapshot;
+  if (!isText(m.reportSeq) || !isText(m.entpName) || !isText(m.fetchedAt)) return false;
+  if (!Array.isArray(m.effects) || !m.effects.every(isText)) return false;
+  // 없는 것은 정상이다(선크림이 아닌 제품). 있는데 문자열이 아닌 것만 걸러낸다.
+  return (m.spf === undefined || isText(m.spf)) && (m.pa === undefined || isText(m.pa));
+}
+
 /**
  * ⚠️ **미지 필드를 보존한다**(설계 §4-2). `{ id, name, category, startDate }`로 재조립하면
  * v2에서 성분표 사진 키 같은 필드를 얹는 순간 **앱을 한 번 열기만 해도** 그 값이 조용히
@@ -125,6 +146,7 @@ function reviveProduct(v: unknown): Product | null {
 
   const out = { ...raw, category };
   if (!endOk) delete out.endDate;
+  if (out.mfds !== undefined && !isSnapshot(out.mfds)) delete out.mfds;
   return out;
 }
 

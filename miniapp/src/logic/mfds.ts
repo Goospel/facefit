@@ -81,6 +81,9 @@ export function parseItems(json: unknown, fetchedAt: string = todayKey()): Sugge
   return out;
 }
 
+/** 실측 봉투(§2-3). `items`는 `parseItems`가 다시 방어적으로 읽으므로 여기서는 안 본다. */
+type Envelope = { header?: { resultCode?: unknown }; body?: { totalCount?: unknown } };
+
 /** 한 페이지. **정상 봉투가 아니면 `null`이다** — 부르는 쪽은 그걸 빈손으로만 읽는다. */
 async function page(
   key: string,
@@ -89,7 +92,7 @@ async function page(
   pageNo: number,
   signal: AbortSignal,
   fetchFn: typeof fetch,
-): Promise<{ body?: { totalCount?: unknown } } | null> {
+): Promise<Envelope | null> {
   /*
     ⚠️ `URLSearchParams`로 조립한다 — 발급받는 일반 인증키(Decoding)에 `/`·`+`·`=`가 섞여
     있어서 날로 이으면 `+`가 공백으로 읽혀 키가 통째로 어긋난다. 어긋난 키의 증상은
@@ -99,7 +102,7 @@ async function page(
   try {
     const res = await fetchFn(`${MFDS_ENDPOINT}?${qs}`, { signal });
     if (!res.ok) return null;
-    const json = (await res.json()) as { header?: { resultCode?: unknown } };
+    const json = (await res.json()) as Envelope;
     // 키 오류·쿼터 초과도 200으로 온다 — 봉투 안의 코드가 유일한 판정이다.
     return json?.header?.resultCode === '00' ? json : null;
   } catch {
