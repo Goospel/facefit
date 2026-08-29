@@ -39,8 +39,8 @@
 > 설계 단일 출처: [푸시 리마인드 설계](docs/2026-08-29-push-reminder-design.md) (2026-08-29 사용자 승인).
 > 서버 0 유지 — 콘솔 정기 발송(REGULAR·토스 대신 발송), 매일 08:00 KST 고정, 동의자 자동 세그먼트.
 
-- [ ] 🔜 **1. 콘솔 — 알림동의문** (SCHEDULED · DAILY 08:00 · purpose 「촬영」) → `termsId` 값 여기 기록
-- [ ] ⬜ **2. 콘솔 — REGULAR 기능성 템플릿** (code `daily-photo-reminder` · 문구 A안, 반려 시 B→C) → 자동검수 APPROVED + `push_test_send` 본인 수신
+- [x] **1. 콘솔 — 알림동의문** — `termsId` **118527** (SCHEDULED · DAILY 08:00 · purpose 「촬영」, 동의 화면 제목 「매일 촬영 알림을 보내드릴까요?」 자동 생성 확인)
+- [x] **2. 콘솔 — REGULAR 기능성 템플릿** — 생성·자동검수 4항목 통과 즉시 APPROVED = 매일 08:00 예약 완료(`templateSetGroupNo` **195487** · templateCode **`facefit-daily-photo-reminder`** — `{appName}-` 접두어 필수 실측). ⚠️ `push_test_send`는 3회 실측 실패(「메세지 템플릿이 없어요」 — 스마트메시지 경로 미지원 추정), 수신 검증은 태스크 6으로 일원화
 - [ ] ⬜ **3. storage 확장** — `facefit.notifyPrompted` 게터/세터 (TDD)
 - [ ] ⬜ **4. notify 래퍼 + FacePhoto 제안 스텝** — `isSupported` 가드 · 1회 제안 규율 (TDD · SDK mock)
 - [ ] ⬜ **5. Home 「아침 알림 받기」 버튼** — 멱등 재동의 경로 겸용 (TDD)

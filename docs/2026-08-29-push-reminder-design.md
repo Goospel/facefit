@@ -153,7 +153,9 @@ AI 자동검수 반려 시 B → C 순으로 재시도한다.
    - → 응답의 **`termsId` 기록**(plan.md 태스크 체크박스에 남긴다)
 3. `push_template_create`:
    - `type: 'REGULAR'` · `templateSetGroupRequest.contentReachType: 'FUNCTIONAL'` · `termsId`(2의 값)
-   - `templateSetGroupRequest.code: 'daily-photo-reminder'` — **이 값이 앱의 templateCode다**
+   - `templateSetGroupRequest.code: 'facefit-daily-photo-reminder'` — **이 값이 앱의 templateCode다**
+     (⚠️ 실측: 발송 코드는 `{appName}-` 접두어 필수 + **소재(templateSetList 항목)에도 각자 code 필수** —
+     설계 초안의 `daily-photo-reminder`는 접두어 규칙으로 거부됐다)
    - 소재: §3-4 A안. `linkUri` 생략(기본 `intoss://facefit`)
    - `sendOption`: `sendingTs`(다음 08:00) + `isRegularType: true` + `sendRegularOption{ dayOfWeek: 'MON,...,SUN', minute: 0, hours: '8', startTs: 내일 08:00 }` —
      ⚠️ `hours` 문자열 형식·`endTs` 필요 여부는 스키마에 미문서. 거부 메시지를 보고 맞춘다(§7-2)
@@ -169,7 +171,7 @@ AI 자동검수 반려 시 B → C 순으로 재시도한다.
 | 파일 | 변경 |
 |---|---|
 | `src/storage.ts` | `facefit.notifyPrompted` 게터/세터 2함수 추가(기존 `Storage` 주입 패턴 그대로) |
-| `src/notify.ts` (신설) | `TEMPLATE_CODE = 'daily-photo-reminder'` 상수 + `requestNotifyAgreement(onDone)` 래퍼 — `isSupported()` false면 즉시 no-op 반환, cleanup 함수 관리 내장 |
+| `src/notify.ts` (신설) | `TEMPLATE_CODE = 'facefit-daily-photo-reminder'` 상수(콘솔 실측값) + `requestNotifyAgreement(onDone)` 래퍼 — `isSupported()` false면 즉시 no-op 반환, cleanup 함수 관리 내장 |
 | `src/screens/FacePhoto.tsx` | 관찰 1문항 종료 지점에 미제안(`!notifyPrompted`)이면 제안 스텝 1개: 「내일도 이 시간에 알려드릴까요?」 [알림 받기]/[괜찮아요] — 어느 쪽이든 `notifyPrompted` 기록 후 종료 |
 | `src/screens/Home.tsx` | 「아침 알림 받기」 한 줄 버튼 상시 노출 — 탭 시 래퍼 호출, 콜백 오면 세션 내 문구 「알림 신청됨」 |
 
@@ -209,7 +211,11 @@ AI 자동검수 반려 시 B → C 순으로 재시도한다.
    `endTs` 필수 여부 불명. 태스크 2에서 거부 메시지를 보고 맞춘다 — 콘솔 웹과 같은 입력
    조합이 안전값이다.
 3. **AI 자동검수 반려 가능성** — 문구 3안 준비로 흡수. 셋 다 반려면 반려 사유가 다음 문구의
-   입력이다.
+   입력이다. (실측: A안이 4항목 즉시 통과 — B·C안 미사용)
+3-1. **`push_test_send` 실측 실패(2026-08-29)** — APPROVED·활성화 완료 후에도 소재 no(2297221)·
+   푸시템플릿 no(4714250) 어느 키로도 「메세지 템플릿이 없어요」(3회). REGULAR는 스마트메시지로
+   처리되는데 이 경로는 테스트 발송 미지원으로 추정. **수신 검증은 태스크 6(실기기 실수신)으로
+   일원화** — 예약 상태 자체는 `push_template_list`의 reviewStatus APPROVED·sendOption으로 확인 완료.
 4. **08:00이 실제 세안 시각과 어긋날 가능성** — 의도된 절단(§3-3). 수신 후 무시율이 높으면
    시각 변경(상수 수준) 또는 §6 시각 설정 승격을 검토한다.
 5. **토스 앱 5.255.0 미만 사용자** — `isSupported()` 가드로 제안 자체를 숨긴다. 촬영 기능엔
