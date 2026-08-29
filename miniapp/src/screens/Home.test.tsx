@@ -2,7 +2,7 @@
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { requestNotifyAgreement } from '../notify';
+import { isNotifySupported, requestNotifyAgreement } from '../notify';
 import { listPhotos, type FacePhoto as Photo } from '../photoStore';
 import type { Notes, Product } from '../storage';
 import { Home } from './Home';
@@ -22,7 +22,7 @@ vi.mock('../photoStore', async (orig) => ({
 }));
 
 /** 알림 동의는 토스 웹뷰 브릿지다 — 여기엔 없다. 래퍼 자체는 `notify.test.ts`가 잰다. */
-vi.mock('../notify', () => ({ requestNotifyAgreement: vi.fn() }));
+vi.mock('../notify', () => ({ isNotifySupported: vi.fn(), requestNotifyAgreement: vi.fn() }));
 
 afterEach(cleanup);
 
@@ -51,6 +51,8 @@ beforeEach(() => {
   vi.clearAllMocks();
   URL.createObjectURL = vi.fn(() => 'blob:today');
   URL.revokeObjectURL = vi.fn();
+  // 기본은 알림을 받을 수 있는 기기다 — 못 받는 기기는 아래에서 따로 잰다.
+  vi.mocked(isNotifySupported).mockReturnValue(true);
 });
 
 describe('촬영 입구', () => {
@@ -110,6 +112,15 @@ describe('아침 알림 진입점', () => {
     cleanup();
     setup({ photos: [TODAY] });
     expect(await screen.findByRole('button', { name: ASK })).toBeTruthy();
+  });
+
+  it('알림을 못 받는 기기(구버전 토스·토스 밖)에서는 버튼 자체가 없다', async () => {
+    // 눌러도 열 수 없는 시트다 — 죽은 버튼을 남기면 사용자는 「눌렀는데 아무 일도 없다」를 본다(설계 §3-2).
+    vi.mocked(isNotifySupported).mockReturnValue(false);
+    setup();
+    await screen.findByRole('button', { name: '오늘 얼굴 찍기' });
+
+    expect(screen.queryByRole('button', { name: ASK })).toBeNull();
   });
 
   it('누르면 토스 동의 화면을 연다', async () => {
