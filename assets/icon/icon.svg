@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024" role="img" aria-labelledby="tf1 df1">
+  <title id="tf1">그화장품효과있나 앱 아이콘</title>
+  <desc id="df1">카메라 파인더 안 얼굴 실루엣 — 어제의 고스트 윤곽이 겹치고 뺨에 반짝임</desc>
+  <defs>
+    <radialGradient id="bgF" cx="0.5" cy="0.34" r="0.86">
+      <stop offset="0" stop-color="#54a0ff"/>
+      <stop offset="0.58" stop-color="#3182f6"/>
+      <stop offset="1" stop-color="#1d5cc4"/>
+    </radialGradient>
+    <linearGradient id="bustF" x1="0.15" y1="0" x2="0.85" y2="1">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="0.4" stop-color="#f2f7fe"/>
+      <stop offset="1" stop-color="#b4c6e4"/>
+    </linearGradient>
+    <linearGradient id="frameF" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#cfdcf3"/>
+    </linearGradient>
+    <linearGradient id="sparkF" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#3182f6"/>
+      <stop offset="1" stop-color="#1d5cc4"/>
+    </linearGradient>
+    <radialGradient id="shF" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#081941" stop-opacity="0.45"/>
+      <stop offset="1" stop-color="#081941" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <rect width="1024" height="1024" fill="url(#bgF)"/>
+
+  <!-- 카메라 파인더 네 모서리 -->
+  <g stroke="url(#frameF)" stroke-width="40" stroke-linecap="round" fill="none" opacity="0.95">
+    <path d="M 132 296 L 132 176 Q 132 132 176 132 L 296 132"/>
+    <path d="M 728 132 L 848 132 Q 892 132 892 176 L 892 296"/>
+    <path d="M 892 728 L 892 848 Q 892 892 848 892 L 728 892"/>
+    <path d="M 296 892 L 176 892 Q 132 892 132 848 L 132 728"/>
+  </g>
+
+  <ellipse cx="512" cy="862" rx="250" ry="38" fill="url(#shF)"/>
+
+  <!-- 어제의 고스트 — 오늘 실루엣 뒤로 왼쪽 가장자리만 비친다 -->
+  <g transform="translate(-56,-20)" fill="none" stroke="#ffffff" stroke-width="14" opacity="0.4">
+    <ellipse cx="512" cy="452" rx="150" ry="172"/>
+    <path d="M 330 828 C 342 686 428 640 512 640 C 596 640 682 686 694 828"/>
+  </g>
+
+  <!-- 오늘의 얼굴 -->
+  <g fill="url(#bustF)">
+    <ellipse cx="512" cy="452" rx="150" ry="172"/>
+    <path d="M 330 828 C 342 686 428 640 512 640 C 596 640 682 686 694 828 Z"/>
+  </g>
+
+  <!-- 뺨의 반짝임 -->
+  <path d="M 582 470 Q 592 500 622 510 Q 592 520 582 550 Q 572 520 542 510 Q 572 500 582 470 Z" fill="url(#sparkF)"/>
+  <path d="M 476 372 Q 481 388 497 393 Q 481 398 476 414 Q 471 398 455 393 Q 471 388 476 372 Z" fill="url(#sparkF)" opacity="0.8"/>
+</svg>
