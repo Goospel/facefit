@@ -339,7 +339,7 @@ function ProductForm({
                 무조건 유지하면 남의 업소명·기능성 뱃지가 다른 제품 카드에 조용히 선다.
                 추가·수정 폼이 같은 저장 지점을 지나므로 판정도 여기 한 곳이면 된다.
               */
-              mfds: snapshot && keepsSnapshot(name.trim(), snapshot.itemName) ? snapshot : undefined,
+              mfds: snapshot && keepsSnapshot(name.trim(), snapshot) ? snapshot : undefined,
             })
           }
         >

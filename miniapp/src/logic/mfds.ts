@@ -83,24 +83,40 @@ export function parseItems(json: unknown, fetchedAt: string = todayKey()): Sugge
   return out;
 }
 
+/** 대조 정규화(v2-3 §3-2) — 공백은 없애고 대소문자는 접는다. 표기 차이로 정상 사용을 죽이지 않는다. */
+const norm = (s: string) => s.replace(/\s+/g, '').toLowerCase();
+const tokenize = (s: string) => s.toLowerCase().split(/\s+/).filter(Boolean);
+
 /**
- * 이름을 고쳐도 스냅샷을 그대로 둘 것인가(설계 §3-2 — 리뷰 반영).
+ * **토큰 전부가 품목명 또는 업소명에 부분문자열로 들어가면 참**(v2-3 §3-2).
+ * 검색 필터와 `keepsSnapshot`이 **같이 쓰는 한 벌**이다 — 규칙이 두 벌이면
+ * 「검색에선 잡히는데 수정하면 스냅샷이 떨어지는」 드리프트가 조용히 생긴다.
  *
- * **저장하려는 이름의 공백 토큰이 전부 원본 품목명 안에 있으면 유지, 하나라도 아니면 떨군다.**
- * 「데이셀디아트셀루미너스커버선크림」 → 「데이셀 선크림」(줄여 쓰기)은 살고,
- * 「나이아드 세럼」(갈아치우기)은 죽는다.
+ * ⚠️ **필드별 OR이지 이어 붙인 한 문자열이 아니다.** 이으면 경계에 걸친 토큰
+ * (「수분세럼」+「주식회사…」의 「세럼주식」)이 우연히 매치돼 무관 제품이 섞인다.
+ */
+function hasAllTokens(tokens: string[], itemName: string, entpName: string): boolean {
+  const item = norm(itemName);
+  const entp = norm(entpName);
+  return tokens.length > 0 && tokens.every((t) => item.includes(t) || entp.includes(t));
+}
+
+/**
+ * 이름을 고쳐도 스냅샷을 그대로 둘 것인가(설계 §3-2 — 리뷰 반영. v2-3 §3-3으로 업소명 편입).
+ *
+ * **저장하려는 이름의 공백 토큰이 전부 원본 품목명 또는 업소명 안에 있으면 유지, 하나라도
+ * 아니면 떨군다.** 「데이셀디아트셀루미너스커버선크림」 → 「데이셀 선크림」(줄여 쓰기)은 살고,
+ * 「나이아드 세럼」(갈아치우기)은 죽는다. 업소명 축이 붙어 브랜드로 줄여 쓴 이름
+ * (「토리든 세럼」 ← (주)토리든)도 산다 — 브랜드 검색이 생기면 흔한 패턴이다.
  *
  * ⚠️ 무조건 유지하면 실수로 고른 제품 A 위에 전혀 다른 이름 B를 타이핑해도 A의 업소명·기능성
- * 뱃지가 B 카드에 선다 — 브랜드 검색은 0건이 정상이라 **새 제안이 안 떠 덮어쓸 기회가 없고**,
- * 하필 §3-4가 규제 민감으로 지목한 표시축이다.
+ * 뱃지가 B 카드에 선다 — 하필 §3-4가 규제 민감으로 지목한 표시축이다.
  *
  * 최소 길이 조건은 안 둔다 — 오판은 「남의 이름 토큰이 전부 원본 안에 있는」 희귀 케이스뿐이고
  * 그때의 피해도 뱃지 오표시 하나다. 조건을 늘릴수록 규칙만 어려워진다.
  */
-export function keepsSnapshot(name: string, itemName: string): boolean {
-  const origin = itemName.replace(/\s+/g, '').toLowerCase();
-  const tokens = name.toLowerCase().split(/\s+/).filter(Boolean);
-  return tokens.length > 0 && tokens.every((t) => origin.includes(t));
+export function keepsSnapshot(name: string, snapshot: Pick<MfdsSnapshot, 'itemName' | 'entpName'>): boolean {
+  return hasAllTokens(tokenize(name), snapshot.itemName, snapshot.entpName);
 }
 
 /** 실측 봉투(§2-3). `items`는 `parseItems`가 다시 방어적으로 읽으므로 여기서는 안 본다. */

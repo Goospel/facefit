@@ -163,6 +163,8 @@ describe('parseItems — SPF · PA 표기', () => {
  */
 describe('keepsSnapshot — 이름 수정 시 스냅샷 유지 판정', () => {
   const ORIGIN = '데이셀디아트셀루미너스커버선크림';
+  /** 판정 입력은 스냅샷 통째다(§3-3) — 업소명이 이미 박제돼 있어 대조 축이 하나 더 있다. */
+  const origin = (itemName = ORIGIN, entpName = '데이셀코스메틱(주)') => ({ itemName, entpName });
 
   it.each([
     ['그대로', ORIGIN],
@@ -171,7 +173,7 @@ describe('keepsSnapshot — 이름 수정 시 스냅샷 유지 판정', () => {
     ['토큰 순서가 뒤집혀도', '선크림 데이셀'],
     ['공백이 여러 칸이어도', '데이셀   선크림'],
   ])('%s이면 유지한다 — 품목명이 길어 다듬는 건 정상 사용이다', (_label, name) => {
-    expect(keepsSnapshot(name, ORIGIN)).toBe(true);
+    expect(keepsSnapshot(name, origin())).toBe(true);
   });
 
   it.each([
@@ -179,7 +181,7 @@ describe('keepsSnapshot — 이름 수정 시 스냅샷 유지 판정', () => {
     ['한 토큰만 남의 것이어도', '데이셀 세럼'],
     ['빈 이름', '   '],
   ])('%s이면 떨군다 — 남의 뱃지가 서면 안 된다', (_label, name) => {
-    expect(keepsSnapshot(name, ORIGIN)).toBe(false);
+    expect(keepsSnapshot(name, origin())).toBe(false);
   });
 
   it('원본의 공백과 대소문자는 무시한다 — 표기 차이로 정상 사용을 죽이면 안 된다', () => {
@@ -188,8 +190,33 @@ describe('keepsSnapshot — 이름 수정 시 스냅샷 유지 판정', () => {
       재면 그 정규화가 죽어도 아무도 못 잡는다(실측으로 살아남아 고쳤다). 「띄어쓰기만 뺀
       이름」은 흔한 정상 사용인데, 원본 공백을 안 지우면 갈아치우기로 오판된다.
     */
-    expect(keepsSnapshot('아쿠아토너', '아쿠아 토너 수분')).toBe(true);
-    expect(keepsSnapshot('CERA toner', 'Cera Toner 수분')).toBe(true);
+    expect(keepsSnapshot('아쿠아토너', origin('아쿠아 토너 수분'))).toBe(true);
+    expect(keepsSnapshot('CERA toner', origin('Cera Toner 수분'))).toBe(true);
+  });
+
+  /**
+   * 브랜드 축 편입(§3-3). **브랜드 검색이 생기는 순간 「토리든 세럼」식 줄여 쓰기가 흔한
+   * 패턴이 된다** — 브랜드 토큰은 품목명에 없고 업소명에만 있어서, 업소명을 안 보면
+   * 검색으로 고른 제품을 자기 말로 줄여 쓰는 순간 스냅샷이 떨어진다.
+   */
+  it('브랜드 토큰이 업소명에만 있어도 유지한다 — 「토리든 세럼」은 정상 줄여 쓰기다', () => {
+    expect(keepsSnapshot('토리든 세럼', { itemName: '다이브인저분자히알루론산수분버블세럼', entpName: '(주)토리든' })).toBe(true);
+  });
+
+  it('법인 접두어는 안 벗긴다 — 부분문자열 대조가 「토리든」 ⊂ 「(주)토리든」을 이미 흡수한다', () => {
+    expect(keepsSnapshot('토리든', { itemName: '다이브인선크림', entpName: '(주)토리든' })).toBe(true);
+  });
+
+  it('업소명 축이 붙어도 갈아치우기는 여전히 떨군다 — OR 확장은 유지 방향으로만 넓힌다', () => {
+    expect(keepsSnapshot('나이아드 세럼', { itemName: '다이브인저분자히알루론산수분버블세럼', entpName: '(주)토리든' })).toBe(false);
+  });
+
+  it('필드 경계를 가로지르는 토큰은 불매치다 — 필드별 OR이지 이어 붙인 한 문자열이 아니다', () => {
+    /*
+      ⚠️ 두 필드를 이어 붙여 대조하면(「수분세럼」+「주식회사코스메틱」) 경계에 걸친
+      「세럼주식」 같은 우연 매치가 생긴다(§3-2). 그 오염은 화면에서 구별이 안 된다.
+    */
+    expect(keepsSnapshot('세럼주식', { itemName: '수분세럼', entpName: '주식회사코스메틱' })).toBe(false);
   });
 });
 
