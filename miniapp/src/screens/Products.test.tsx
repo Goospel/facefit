@@ -161,6 +161,32 @@ describe('제품 수정', () => {
     fireEvent.click(btn('토너 수정'));
     expect(screen.getByLabelText('종료일')).toBeTruthy();
   });
+
+  it('종료일을 비우면 「사용 중」으로 되돌아간다 — 종료를 실수로 눌렀을 때의 유일한 출구다', () => {
+    // ⚠️ 이 경로가 죽으면 되돌릴 방법이 **앱 안에 없다** — 제품을 지우고 다시 등록하는 수밖에
+    // 없는데, 그러면 새 id가 생겨 그때까지의 기간 기록이 통째로 끊긴다.
+    const { onChange } = setup([p({ endDate: '2026-08-20' })]);
+    fireEvent.click(btn('토너 수정'));
+
+    fireEvent.change(screen.getByLabelText('종료일'), { target: { value: '' } });
+    fireEvent.click(btn('저장'));
+
+    const [next] = onChange.mock.calls[0];
+    expect(next[0].endDate).toBeUndefined();
+    // 저장소를 왕복해도 「사용 중」이어야 한다 — JSON에 `endDate: null`이 남으면 로더가 다르게 읽는다.
+    expect(JSON.parse(JSON.stringify(next))[0].endDate).toBeUndefined();
+  });
+
+  it('대조군 — 종료일을 다른 날로 바꾸면 그 날짜가 들어간다', () => {
+    // 위 테스트가 「endDate를 아예 안 넘긴다」로 통과하지 않게 잡아 둔다.
+    const { onChange } = setup([p({ endDate: '2026-08-20' })]);
+    fireEvent.click(btn('토너 수정'));
+
+    fireEvent.change(screen.getByLabelText('종료일'), { target: { value: '2026-08-25' } });
+    fireEvent.click(btn('저장'));
+
+    expect(onChange.mock.calls[0][0][0].endDate).toBe('2026-08-25');
+  });
 });
 
 describe('오늘까지 쓰고 종료', () => {

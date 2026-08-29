@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { captureJpeg } from '../logic/capture';
 import { listPhotos, openPhotoDb, savePhoto, type FacePhoto as Photo } from '../photoStore';
+import { todayKey } from '../storage';
 import { FacePhoto } from './FacePhoto';
 
 /**
@@ -273,8 +274,18 @@ describe('촬영 화면 — 셔터 플래시', () => {
 
     // ⚠️ **전면 카메라의 자동 노출 보정이 따라올 시간**을 주는 것이 이 지연의 전부다.
     // 0ms로 찍으면 흰 화면이 뜨기도 전의 어두운 프레임이 저장돼 플래시가 통째로 무의미해진다.
-    expect(container.querySelector('[data-flash]')).toBeTruthy();
+    const overlay = container.querySelector('[data-flash]');
+    expect(overlay).toBeTruthy();
     expect(capture).not.toHaveBeenCalled();
+
+    /*
+      ⚠️ **흰 화면이 맨 위에 있어야 화면이 밝아진다.** 프리뷰·고스트 아래에 깔리면 요소는
+      있는데 광량이 0이라, 「플래시가 있다」만 재는 테스트는 그대로 통과한다(리뷰 실측:
+      `zIndex: -1` 돌연변이가 살아남았다). 위로 오는 수단은 **DOM 순서**다 — 형제들이
+      z-index를 안 쓰므로 마지막 자식이 이긴다. 그래서 둘 다 잠근다.
+    */
+    expect(overlay!.parentElement!.lastElementChild).toBe(overlay);
+    expect(Number(getComputedStyle(overlay!).zIndex) || 0).toBeGreaterThanOrEqual(0);
   });
 
   it('플래시가 끝나면 찍고 흰 화면을 걷는다', async () => {
@@ -773,7 +784,13 @@ describe('촬영 화면 — 저장 직후 관찰 1문항', () => {
 
     expect(onNote).toHaveBeenCalledTimes(1);
     const [date, verdict] = onNote.mock.calls[0];
-    expect(date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    /*
+      ⚠️ **날짜 「형태」가 아니라 오늘 그 자체여야 한다.** 설계 §1-1이 소급 입력을 막는 이유가
+      「관찰은 그날의 눈으로만 성립한다」인데, 형태만 재면 아무 날짜나 통과한다(리뷰 실측:
+      `'2020-01-01'` 고정 돌연변이가 살아남았다). 저장하는 사진의 키와 같은 값이라야
+      캘린더에서 사진과 관찰이 같은 칸에 선다.
+    */
+    expect(date).toBe(todayKey());
     expect(verdict).toBe('better');
     expect(onClose).toHaveBeenCalled();
   });

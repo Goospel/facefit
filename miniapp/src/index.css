@@ -44,8 +44,9 @@ body {
   font-family: system-ui, -apple-system, 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif;
   line-height: 1.5;
   -webkit-tap-highlight-color: transparent;
-  /* 세트 +/− 를 빠르게 연타하면 웹뷰가 더블탭 확대로 오인해 화면이 잘린다. 스크롤·탭은 그대로 둔 채
-     그 확대만 끊는다. 뷰포트 메타를 무시하는 웹뷰까지 커버하는 두 번째 방어선이기도 하다. */
+  /* 셔터·달력 날짜처럼 같은 자리를 빠르게 연타하면 웹뷰가 더블탭 확대로 오인해 화면이 잘린다.
+     스크롤·탭은 그대로 둔 채 그 확대만 끊는다. 뷰포트 메타를 무시하는 웹뷰까지 커버하는
+     두 번째 방어선이기도 하다. */
   touch-action: manipulation;
 }
 
