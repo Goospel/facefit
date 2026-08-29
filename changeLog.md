@@ -4,6 +4,14 @@
 > 앞으로 할 일은 [`plan.md`](plan.md), 함정은 [`claude-docs/troubleshooting.md`](claude-docs/troubleshooting.md).
 > PR 번호는 적지 않는다 — 미래에 확정되는 값이라 stale이 조용히 쌓인다. 찾으려면 제목으로 `git log --grep`.
 
+## 2026-08-29 · 첫 검수 제출 (`20260829-1`)
+
+실기기 확인이 끝나(카메라 정상, `FLASH_MS`·`BASE_FPS` 조정 없이 확정) 번들
+`20260829-1`을 릴리스 노트와 함께 검수에 넣었다 — `REVIEWING`. restfit의 첫 출시가
+탭바 하나로 3회 왕복한 전례가 있어, 탭바는 그때 확정된 플로팅 캡슐 수치를 복사해 왔다.
+반려되면 사유는 `review_get`이 아니라 `review_get_feedback`에서 본다(restfit 실측).
+승인돼도 자동 출시는 아니다 — 콘솔 웹 「출시하기」는 사용자가 누른다.
+
 ## 2026-08-29 · 화장품 제품 데이터 API 리서치 — v2 계단에 반영
 
 한국 출시 화장품의 제품 단위 공개 API가 있는지 조사해
