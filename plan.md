@@ -15,8 +15,8 @@
   - [x] plan · changeLog · troubleshooting 분할 시스템 + README 내비게이터
   - [x] `storage.ts`의 `todayKey`만 선반입 — `calendar.test.ts`가 「오늘 키가 그 달 셀에 있다」로 그걸 건다
 - [x] ✅ **2. photoStore 이식** — `facefit-photos` / `FacePhoto` 타입 (테스트 이식 후 구현)
-- [ ] 🔜 **3. storage 신설** — 제품·관찰·온보딩 + `todayKey`
-- [ ] ⬜ **4. 순수 로직** — `logic/products.ts` · `logic/timelapse.ts`
+- [x] ✅ **3. storage 신설** — 제품·관찰·온보딩 + `todayKey`
+- [ ] 🔜 **4. 순수 로직** — `logic/products.ts` · `logic/timelapse.ts`
 - [ ] ⬜ **5. FacePhoto 화면** — 고스트 + 플래시 캡처 + 저장 후 관찰 1탭
 - [ ] ⬜ **6. Products 화면** — 목록·추가·수정·종료·삭제
 - [ ] ⬜ **7. History 화면** — 월간 캘린더 · 날짜 시트 · 사진 모두 삭제
