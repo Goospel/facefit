@@ -1,11 +1,12 @@
 import type { Product } from '../storage';
+import { daysBetween } from './calendar';
 
 /**
  * 타임랩스의 순수 산수 — 화면 없이 전부 잰다. 화면은 여기서 나온 분율을 CSS `%`로 옮기고
  * 딜레이를 `setTimeout`에 넣기만 한다.
  *
- * ⚠️ `logic/calendar.ts`와 같은 규율: **날짜는 `Date.UTC` 산수로만 다룬다.** 로컬 메서드를
- * 한 줄이라도 섞으면 시간대에 따라 하루가 밀려 막대가 한 칸씩 어긋난다.
+ * ⚠️ 날짜 산수는 `logic/calendar.ts`의 `daysBetween` 하나를 쓴다 — 그 파일이 **UTC 전용**
+ * 규칙을 머리말로 들고 있고, 여기서 따로 짜면 그 규칙이 두 곳으로 갈린다.
  */
 
 /**
@@ -27,14 +28,6 @@ export function frameDelay(speed: 1 | 2): number {
  */
 export type Segment = { id: string; name: string; startFrac: number; endFrac: number; lane: number };
 
-const MS_PER_DAY = 86400000;
-
-/** `'YYYY-MM-DD'` → epoch 일수. UTC 자정 기준이라 시간대가 낄 자리가 없다. */
-function dayNumber(date: string): number {
-  const [y, m, d] = date.split('-').map(Number);
-  return Date.UTC(y, m - 1, d) / MS_PER_DAY;
-}
-
 /**
  * 날짜의 위치 분율. `first`가 0, `last`가 1이다.
  *
@@ -45,9 +38,9 @@ function dayNumber(date: string): number {
  * 여기서 NaN이 새면 막대 폭이 통째로 사라져 원인을 짚기 어렵다 — 0으로 끝낸다.
  */
 export function dateFrac(date: string, first: string, last: string): number {
-  const span = dayNumber(last) - dayNumber(first);
+  const span = daysBetween(first, last);
   if (span <= 0) return 0;
-  return (dayNumber(date) - dayNumber(first)) / span;
+  return daysBetween(first, date) / span;
 }
 
 const clamp01 = (v: number) => Math.min(1, Math.max(0, v));

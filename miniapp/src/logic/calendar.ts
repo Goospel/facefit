@@ -45,6 +45,26 @@ export function monthCells(ym: Ym): (string | null)[] {
   return cells;
 }
 
+const MS_PER_DAY = 86400000;
+
+/** `'YYYY-MM-DD'` → epoch 일수. UTC 자정 기준이라 시간대가 낄 자리가 없다. */
+function dayNumber(dateKey: string): number {
+  const [y, m, d] = dateKey.split('-').map(Number);
+  return Date.UTC(y, m - 1, d) / MS_PER_DAY;
+}
+
+/**
+ * 두 날짜 사이의 일수. 「D+n」의 n이자 타임랩스 구간 바의 좌표다.
+ *
+ * ⚠️ **로컬 `Date` 산수로 짜면 서머타임이 있는 시간대에서 정수가 안 나온다**(23·25시간짜리
+ * 하루가 있다) — `D+0.958…`이 화면에 「D+0」으로 뜬다. 이 파일의 UTC 규칙이 그걸 막는다.
+ *
+ * 거꾸로면 음수다 — 자르는 판단은 쓰는 쪽이 한다.
+ */
+export function daysBetween(from: string, to: string): number {
+  return dayNumber(to) - dayNumber(from);
+}
+
 /** 달력 헤더 문구. */
 export function formatYm(ym: Ym): string {
   return `${ym.year}년 ${ym.month}월`;

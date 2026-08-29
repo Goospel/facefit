@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { todayKey } from '../storage';
-import { addMonth, formatYm, monthCells, monthOf } from './calendar';
+import { addMonth, daysBetween, formatYm, monthCells, monthOf } from './calendar';
 
 /**
  * 달력 격자의 산수. **라이브러리 0** — 날짜 키가 전부 `YYYY-MM-DD` 문자열이라
@@ -83,5 +83,33 @@ describe('formatYm', () => {
 
   it('월에 0을 채우지 않는다 — 「2026년 03월」은 달력 헤더 말투가 아니다', () => {
     expect(formatYm({ year: 2026, month: 3 })).toBe('2026년 3월');
+  });
+});
+
+describe('daysBetween', () => {
+  it('같은 날은 0이다', () => {
+    expect(daysBetween('2026-08-29', '2026-08-29')).toBe(0);
+  });
+
+  it('하루 뒤는 1이다 — 「D+n」의 n이 이것이다', () => {
+    expect(daysBetween('2026-08-01', '2026-08-02')).toBe(1);
+  });
+
+  it('월을 넘겨도 실제 일수로 센다 — 문자열 산수로 근사하지 않는다', () => {
+    expect(daysBetween('2026-08-01', '2026-09-01')).toBe(31);
+  });
+
+  it('윤달도 달력이 아는 대로 센다', () => {
+    // 2028은 윤년이라 2월이 29일이다. 손으로 쓴 규칙이 없어야 이게 맞는다.
+    expect(daysBetween('2028-02-01', '2028-03-01')).toBe(29);
+  });
+
+  it('거꾸로면 음수다 — 자르는 판단은 쓰는 쪽이 한다', () => {
+    expect(daysBetween('2026-08-02', '2026-08-01')).toBe(-1);
+  });
+
+  it('서머타임이 있는 시간대에서도 정수다 — UTC 산수라 23·25시간이 낄 자리가 없다', () => {
+    // 로컬 `Date` 산수로 짜면 이런 구간에서 0.958…이 나오고, 화면엔 「D+0」이 뜬다.
+    expect(daysBetween('2026-03-07', '2026-03-09')).toBe(2);
   });
 });
