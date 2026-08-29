@@ -17,3 +17,6 @@ coverage/
 *.log
 .DS_Store
 Thumbs.db
+
+# 식약처 API 키 — 번들 노출은 수용하되 레포 평문 커밋은 안 한다 (설계 §3-1)
+.env.local
