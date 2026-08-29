@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
 import { daysBetween } from '../logic/calendar';
+import { searchProducts, type Suggestion } from '../logic/mfds';
 import { CATEGORY_KO, isActive, sortProducts } from '../logic/products';
-import { CATEGORIES, newId, type Category, type Product } from '../storage';
+import { CATEGORIES, newId, type Category, type MfdsSnapshot, type Product } from '../storage';
 import { ui } from '../ui';
 
 /**
@@ -176,6 +177,44 @@ function ProductForm({
   const [startDate, setStartDate] = useState(initial?.startDate ?? today);
   const [endDate, setEndDate] = useState(initial?.endDate ?? '');
 
+  const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
+  /**
+   * 붙일 스냅샷. **명시로 고른 것만 여기 들어온다**(설계 §4-2) — 타이핑 도중 스친 제안이
+   * 조용히 붙으면 사용자는 자기가 뭘 저장했는지 모른다.
+   */
+  const [snapshot, setSnapshot] = useState<MfdsSnapshot | undefined>(initial?.mfds);
+  /**
+   * 검색을 쉬어야 할 이름. **고른 직후와 수정 폼을 연 직후**가 그렇다 — 안 두면 고르자마자
+   * 그 이름으로 다시 검색해 목록이 도로 열리고, 수정하러 열기만 해도 쿼터가 나간다.
+   */
+  const [settledName, setSettledName] = useState(initial?.name ?? null);
+
+  useEffect(() => {
+    const q = name.trim();
+    // 20만 건에 한 글자는 검색이 아니다.
+    if (q.length < 2 || q === settledName) return void setSuggestions([]);
+
+    const ctrl = new AbortController();
+    // ⚠️ 매 글자마다 부르면 등록 한 번에 요청이 수십 개다(2요청 전략이라 곱절이다).
+    const t = setTimeout(() => {
+      // ⚠️ 실패는 전부 무음이다 — 배너를 띄우는 순간 등록 흐름을 검색이 방해한다(설계 §3-2).
+      searchProducts(q, ctrl.signal).then(setSuggestions, () => setSuggestions([]));
+    }, 300);
+    // 이전 요청을 끊지 않으면 늦게 온 응답이 새 검색 결과를 덮는다.
+    return () => {
+      clearTimeout(t);
+      ctrl.abort();
+    };
+  }, [name, settledName]);
+
+  function pick(s: Suggestion) {
+    setName(s.itemName);
+    setSnapshot(s.snapshot);
+    // 목록은 이걸로 닫힌다 — 위 effect가 「쉬는 이름」을 보고 제안을 비운다(여기서 또 비우면
+    // 어떤 입력으로도 안 밟히는 죽은 줄이 된다).
+    setSettledName(s.itemName);
+  }
+
   const ok = name.trim().length > 0;
 
   return (
@@ -186,9 +225,26 @@ function ProductForm({
           style={{ ...ui.input, textAlign: 'left' }}
           value={name}
           onChange={(e) => setName(e.target.value)}
-          placeholder="예: 세라마이드 토너"
+          /* 품목명에 브랜드 문자열이 대체로 없다(실측 §2-3) — 검색 축을 미리 알려 둔다. */
+          placeholder="예: 수분 토너 (제품명으로 검색돼요)"
         />
       </label>
+
+      {suggestions.length > 0 && (
+        /* 카드 안 인라인이다 — 포털·팝오버를 만들 이유가 없다(설계 §4-2). */
+        <div data-testid="mfds-suggestions" style={{ display: 'grid', gap: 4, marginTop: -6 }}>
+          {suggestions.map((s, i) => (
+            <button
+              key={`${s.snapshot.reportSeq}-${i}`}
+              style={{ ...ui.secondary, textAlign: 'left', padding: '10px 12px' }}
+              onClick={() => pick(s)}
+            >
+              <span style={{ display: 'block', fontSize: 14, color: 'var(--text)' }}>{s.itemName}</span>
+              <span style={{ display: 'block', fontSize: 12, fontWeight: 500 }}>{s.snapshot.entpName}</span>
+            </button>
+          ))}
+        </div>
+      )}
 
       <label style={{ display: 'block' }}>
         <span style={ui.label}>카테고리</span>
@@ -238,6 +294,8 @@ function ProductForm({
                 `undefined`는 `JSON.stringify`가 떨구므로 저장소 왕복도 깨끗하다.
               */
               endDate: endDate || undefined,
+              // 고른 적이 없으면 `undefined`다 — 수기 등록 그대로다(위 `endDate`와 같은 이유로 명시한다).
+              mfds: snapshot,
             })
           }
         >

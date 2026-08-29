@@ -1,9 +1,17 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import type { Product } from '../storage';
+import type { Suggestion } from '../logic/mfds';
+import type { MfdsSnapshot, Product } from '../storage';
 import { Products } from './Products';
+
+/**
+ * 검색은 **통째로 목이다** — 실네트워크에 매달리면 이 화면 테스트가 식약처 점검 시간에 빨개진다.
+ * 여기서 재는 것은 응답의 내용이 아니라 **화면이 검색을 어떻게 다루는가**다.
+ */
+const { searchProducts } = vi.hoisted(() => ({ searchProducts: vi.fn() }));
+vi.mock('../logic/mfds', () => ({ searchProducts }));
 
 /**
  * 제품 탭 — 수동 CRUD.
@@ -202,6 +210,213 @@ describe('오늘까지 쓰고 종료', () => {
   it('이미 종료한 제품에는 그 버튼이 없다', () => {
     setup([p({ endDate: '2026-08-10' })]);
     expect(screen.queryByRole('button', { name: '토너 종료' })).toBeNull();
+  });
+});
+
+/**
+ * 이름 입력란 = 검색창(설계 §3-2). **검색과 수기 등록이 같은 칸이다** — 제안이 뜨면 고르고,
+ * 안 뜨면(커버리지 밖·오프라인·쿼터 소진·API 장애) 그냥 계속 타이핑해 저장한다.
+ *
+ * 여기서 잠그는 것 넷: **디바운스**(매 타이핑마다 부르면 쿼터가 샌다) · **이전 요청 취소**
+ * (늦게 온 응답이 새 검색을 덮는다) · **명시로 고른 것만 스냅샷이 붙는다**(타이핑 도중 스친
+ * 제안이 조용히 붙으면 사용자는 자기가 뭘 저장했는지 모른다) · **실패는 무음**(에러 UI 없음).
+ */
+describe('제품 이름 자동완성', () => {
+  const snap = (over: Partial<MfdsSnapshot> = {}): MfdsSnapshot => ({
+    reportSeq: '2026026858',
+    entpName: '데이셀코스메틱(주)',
+    effects: ['자외선차단'],
+    spf: '50+',
+    pa: '++++',
+    fetchedAt: '2026-08-29',
+    ...over,
+  });
+
+  const suggestion = (itemName: string, over: Partial<MfdsSnapshot> = {}): Suggestion => ({ itemName, snapshot: snap(over) });
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    // ⚠️ 모듈 목이라 호출 이력이 테스트를 건너 쌓인다 — 안 지우면 「몇 번 불렀나」가 전부 거짓말이 된다.
+    searchProducts.mockReset();
+    searchProducts.mockResolvedValue([]);
+  });
+  afterEach(() => vi.useRealTimers());
+
+  /** 디바운스가 익고 응답 프라미스까지 흐르게 둔다. */
+  async function settle(ms = 300) {
+    await act(async () => {
+      vi.advanceTimersByTime(ms);
+    });
+  }
+
+  function openForm(products: Product[] = []) {
+    const r = setup(products);
+    fireEvent.click(btn('제품 추가'));
+    return r;
+  }
+
+  const type = (value: string) => fireEvent.change(screen.getByLabelText('제품 이름'), { target: { value } });
+
+  it('무엇으로 검색되는지 placeholder가 미리 알린다 — 브랜드명은 0건이 정상이다', () => {
+    // 품목명에 브랜드 문자열이 대체로 없다(실측 §2-3). 기대치를 미리 맞춰 두는 한 줄이다.
+    openForm();
+    expect((screen.getByLabelText('제품 이름') as HTMLInputElement).placeholder).toMatch(/제품명으로 검색/);
+  });
+
+  it('한 자만 치면 안 부른다 — 20만 건에 한 글자는 검색이 아니다', async () => {
+    openForm();
+    type('토');
+    await settle();
+
+    expect(searchProducts).not.toHaveBeenCalled();
+  });
+
+  it('타이핑이 멈춘 뒤에 한 번만 부른다 — 매 글자마다 부르면 쿼터가 샌다', async () => {
+    openForm();
+
+    type('토');
+    type('토너');
+    type('토너패');
+    await settle(299);
+    expect(searchProducts).not.toHaveBeenCalled();
+
+    await settle(1);
+    expect(searchProducts).toHaveBeenCalledTimes(1);
+    expect(searchProducts.mock.calls[0][0]).toBe('토너패');
+  });
+
+  it('새로 치면 이전 요청을 취소한다 — 늦게 온 응답이 새 검색을 덮으면 안 된다', async () => {
+    openForm();
+
+    type('토너');
+    await settle();
+    const first = searchProducts.mock.calls[0][1] as AbortSignal;
+    expect(first.aborted).toBe(false);
+
+    type('토너패드');
+    await settle();
+
+    expect(first.aborted).toBe(true);
+    expect(searchProducts).toHaveBeenCalledTimes(2);
+  });
+
+  it('제안에 품목명과 업소명이 같이 선다 — 같은 이름의 타사 제품을 가른다', async () => {
+    searchProducts.mockResolvedValue([suggestion('데이셀디아트셀루미너스커버선크림')]);
+    openForm();
+
+    type('선크림');
+    await settle();
+
+    const list = screen.getByTestId('mfds-suggestions');
+    expect(within(list).getByText('데이셀디아트셀루미너스커버선크림')).toBeTruthy();
+    expect(within(list).getByText('데이셀코스메틱(주)')).toBeTruthy();
+  });
+
+  it('제안을 고르면 이름이 채워지고 목록이 닫힌다', async () => {
+    searchProducts.mockResolvedValue([suggestion('데이셀디아트셀루미너스커버선크림')]);
+    openForm();
+    type('선크림');
+    await settle();
+
+    fireEvent.click(screen.getByRole('button', { name: /데이셀디아트셀루미너스커버선크림/ }));
+    await settle();
+
+    expect((screen.getByLabelText('제품 이름') as HTMLInputElement).value).toBe('데이셀디아트셀루미너스커버선크림');
+    // 고른 이름으로 다시 검색해 목록이 도로 열리면, 저장 버튼이 목록에 가린다.
+    expect(screen.queryByTestId('mfds-suggestions')).toBeNull();
+  });
+
+  it('고른 제안이 저장에 스냅샷으로 붙는다', async () => {
+    searchProducts.mockResolvedValue([suggestion('선크림하나')]);
+    const { onChange } = openForm();
+    type('선크림');
+    await settle();
+
+    fireEvent.click(screen.getByRole('button', { name: /선크림하나/ }));
+    fireEvent.click(btn('저장'));
+
+    expect(onChange.mock.calls[0][0][0].mfds).toEqual(snap());
+  });
+
+  it('고른 뒤 이름을 줄여 써도 스냅샷은 남는다 — 품목명이 길어 다듬는 건 정상 사용이다', async () => {
+    searchProducts.mockResolvedValue([suggestion('데이셀디아트셀루미너스커버선크림')]);
+    const { onChange } = openForm();
+    type('선크림');
+    await settle();
+    fireEvent.click(screen.getByRole('button', { name: /데이셀디아트셀루미너스커버선크림/ }));
+
+    type('데이셀 선크림');
+    fireEvent.click(btn('저장'));
+
+    expect(onChange.mock.calls[0][0][0].name).toBe('데이셀 선크림');
+    expect(onChange.mock.calls[0][0][0].mfds).toEqual(snap());
+  });
+
+  it('고르지 않고 저장하면 스냅샷이 없다 — 스친 제안이 조용히 붙으면 안 된다', async () => {
+    searchProducts.mockResolvedValue([suggestion('데이셀디아트셀루미너스커버선크림')]);
+    const { onChange } = openForm();
+
+    type('선크림');
+    await settle();
+    fireEvent.click(btn('저장'));
+
+    expect(onChange.mock.calls[0][0][0].mfds).toBeUndefined();
+    // 저장소를 왕복해도 수기 제품이어야 한다.
+    expect(JSON.parse(JSON.stringify(onChange.mock.calls[0][0]))[0]).not.toHaveProperty('mfds');
+  });
+
+  it('제안이 0건이면 아무것도 안 뜬다 — 에러 배너를 만들지 않는다', async () => {
+    searchProducts.mockResolvedValue([]);
+    const { container } = openForm();
+
+    type('토리든');
+    await settle();
+
+    expect(screen.queryByTestId('mfds-suggestions')).toBeNull();
+    // ⚠️ 실패가 사용자에게 「실패」로 보이는 순간 등록 흐름을 검색이 방해한다(§3-2).
+    for (const noise of ['검색 실패', '오류', '찾을 수 없', '다시 시도']) {
+      expect(container.textContent?.includes(noise), noise).toBe(false);
+    }
+  });
+
+  it('검색이 던져도 화면은 멀쩡하다', async () => {
+    searchProducts.mockRejectedValue(new Error('boom'));
+    openForm();
+
+    type('토너');
+    await settle();
+
+    expect(screen.getByLabelText('제품 이름')).toBeTruthy();
+    expect(screen.queryByTestId('mfds-suggestions')).toBeNull();
+  });
+
+  it('수정 폼을 열자마자 검색하지 않는다 — 이미 정한 이름이다', async () => {
+    setup([p({ name: '오래된토너' })]);
+    fireEvent.click(btn('오래된토너 수정'));
+
+    await settle();
+
+    expect(searchProducts).not.toHaveBeenCalled();
+  });
+
+  it('수정하면서 이름을 고치면 그때는 검색한다 — 수기 제품을 스스로 연결하는 길이다', async () => {
+    setup([p({ name: '오래된토너' })]);
+    fireEvent.click(btn('오래된토너 수정'));
+
+    type('세라마이드');
+    await settle();
+
+    expect(searchProducts).toHaveBeenCalledTimes(1);
+  });
+
+  it('수정해도 원래 스냅샷은 그대로 간다', async () => {
+    const { onChange } = setup([p({ name: '선크림하나', mfds: snap() })]);
+    fireEvent.click(btn('선크림하나 수정'));
+
+    fireEvent.change(screen.getByLabelText('시작일'), { target: { value: '2026-08-05' } });
+    fireEvent.click(btn('저장'));
+
+    expect(onChange.mock.calls[0][0][0].mfds).toEqual(snap());
   });
 });
 
