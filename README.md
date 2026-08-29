@@ -21,5 +21,16 @@ npm run dev     # http://localhost:5320
 npm test        # vitest
 ```
 
-⚠️ **사진은 이 기기를 떠나지 않는다** — 서버는 0대다. 사진은 IndexedDB(`facefit-photos`),
-제품·관찰 기록은 localStorage에 있고 런타임 네트워크 호출이 없다.
+제품 검색(자동완성)은 식약처 공공 API를 쓴다 — `miniapp/.env.local`에 키를 넣는다.
+**키가 없으면 자동완성만 조용히 꺼지고** 나머지는 그대로 돈다(수기 등록이 상시 경로다).
+
+```
+VITE_MFDS_KEY=<공공데이터포털 일반 인증키(Decoding)>
+```
+
+발급: [기능성화장품 보고품목정보(15095680)](https://www.data.go.kr/tcs/dss/selectApiDataDetailView.do?publicDataPk=15095680)
+활용신청(개발계정 자동승인, 일 10,000회).
+
+⚠️ **사진은 이 기기를 떠나지 않는다** — 우리가 운영하는 서버는 0대다. 사진은
+IndexedDB(`facefit-photos`), 제품·관찰 기록은 localStorage에 있다. 나가는 것은 제품 검색 때
+치는 **검색어 하나뿐**이다(식약처 공공 API 조회 — v2-2에서 생긴 유일한 런타임 네트워크 호출).

@@ -25,6 +25,34 @@ export const PRODUCT_MAX = 200;
 export const CATEGORIES = ['cleanser', 'toner', 'serum', 'cream', 'sunscreen', 'mask', 'etc'] as const;
 export type Category = (typeof CATEGORIES)[number];
 
+/**
+ * 등록 시점에 식약처 보고품목 API에서 받아 **박제한** 메타(설계 §3-3).
+ *
+ * ⚠️ **재조회하지 않는다.** 열람할 때마다 다시 부르면 오프라인에서 카드가 깨지고, 호출 0이던
+ * 열람 경로에 네트워크가 스민다. 보고 데이터는 사실상 불변(보고 이력)이라 부패 리스크도 낮다 —
+ * 대신 `fetchedAt`으로 「언제 것인지」만 정직하게 남긴다.
+ */
+export type MfdsSnapshot = {
+  /** `COSMETIC_REPORT_SEQ` — 제안 구분·향후 재조회 열쇠. */
+  reportSeq: string;
+  /**
+   * `ITEM_NAME` 원본 품목명 — 이름을 고쳤을 때 **스냅샷을 유지할지 가르는 기준이다**(설계 §3-2).
+   *
+   * ⚠️ 폼 state가 아니라 여기 두는 이유: 몇 달 뒤 수정 세션에도 비교 기준이 남아 있어야 한다.
+   */
+  itemName: string;
+  /** `ENTP_NAME`(업소명) — 카드의 「브랜드」 줄. */
+  entpName: string;
+  /** 보고된 기능성 구분(`'미백'`·`'주름개선'`·`'자외선차단'`). **명사뿐이다** — 설계 §3-4. */
+  effects: string[];
+  /** 원문 그대로(`'50+'`). 카드가 `SPF` 접두어를 붙인다. */
+  spf?: string;
+  /** 파서가 편 `'+'` 문자열(원문은 숫자 `"4"`). */
+  pa?: string;
+  /** `'YYYY-MM-DD'`. 스냅샷 원칙의 정직한 표기다. */
+  fetchedAt: string;
+};
+
 export type Product = {
   /** `newId()`. 목록 key이자 삭제·수정의 지목 대상이라 없으면 그 줄을 손댈 방법이 없다. */
   id: string;
@@ -34,6 +62,8 @@ export type Product = {
   startDate: string;
   /** 없으면 「사용 중」. `startDate`보다 앞이면 로드에서 이것만 버린다. */
   endDate?: string;
+  /** 없으면 수기 등록 제품이다 — **v1 데이터 전부가 이 상태다.** */
+  mfds?: MfdsSnapshot;
 };
 
 /**
@@ -79,6 +109,29 @@ export function newId(): string {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
+const isText = (v: unknown): v is string => typeof v === 'string';
+
+/**
+ * 스냅샷이 화면에 세워도 되는 모양인가(설계 §3-3). **검증 등급은 「표시용」이다** —
+ * 어긋나면 `mfds`만 버리고 레코드는 산다(카테고리 강등과 같은 급). 제품 기록이 본체고
+ * API 메타는 장식이라, 여기서 레코드째 기각하면 메타 오류 하나에 기간 기록이 통째로 증발한다.
+ *
+ * ⚠️ 타입까지 보는 이유는 **화면이 이 값을 그대로 그리기 때문이다** — 객체가 섞여 들어오면
+ * React가 렌더에서 던져 제품 탭이 죽는다. 「살리는 방어」가 죽이는 방어로 뒤집히는 자리다.
+ */
+function isSnapshot(v: unknown): v is MfdsSnapshot {
+  if (typeof v !== 'object' || v === null) return false;
+  // `Array.isArray`는 안 본다 — JSON 배열은 `reportSeq`를 달고 올 수 없어 바로 아래 줄에서
+  // 어차피 걸린다(가드를 얹어 봐야 어떤 입력으로도 안 밟히는 죽은 가지가 된다).
+  const m = v as MfdsSnapshot;
+  // ⚠️ `itemName`이 없으면 이름 수정 시의 유지 판정 자체가 불가능하다(§3-2) — 그 상태로
+  // 살려 두면 갈아치운 이름 위에 남의 뱃지가 조용히 남는다.
+  if (!isText(m.reportSeq) || !isText(m.itemName) || !isText(m.entpName) || !isText(m.fetchedAt)) return false;
+  if (!Array.isArray(m.effects) || !m.effects.every(isText)) return false;
+  // 없는 것은 정상이다(선크림이 아닌 제품). 있는데 문자열이 아닌 것만 걸러낸다.
+  return (m.spf === undefined || isText(m.spf)) && (m.pa === undefined || isText(m.pa));
+}
+
 /**
  * ⚠️ **미지 필드를 보존한다**(설계 §4-2). `{ id, name, category, startDate }`로 재조립하면
  * v2에서 성분표 사진 키 같은 필드를 얹는 순간 **앱을 한 번 열기만 해도** 그 값이 조용히
@@ -101,6 +154,7 @@ function reviveProduct(v: unknown): Product | null {
 
   const out = { ...raw, category };
   if (!endOk) delete out.endDate;
+  if (out.mfds !== undefined && !isSnapshot(out.mfds)) delete out.mfds;
   return out;
 }
 

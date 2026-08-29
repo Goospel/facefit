@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
 import { daysBetween } from '../logic/calendar';
+import { keepsSnapshot, searchProducts, type Suggestion } from '../logic/mfds';
 import { CATEGORY_KO, isActive, sortProducts } from '../logic/products';
-import { CATEGORIES, newId, type Category, type Product } from '../storage';
+import { CATEGORIES, newId, type Category, type MfdsSnapshot, type Product } from '../storage';
 import { ui } from '../ui';
 
 /**
@@ -94,6 +95,17 @@ export function Products({
           ))}
         </Section>
       )}
+
+      {/*
+        출처 캡션은 **목록에 한 줄뿐이다**(설계 §4-2) — 카드마다 반복하면 소음이고, 뱃지가
+        선 카드가 하나도 없으면 아예 안 뜬다. 뱃지는 앱의 주장이 아니라 **보고 사실의 인용**이고,
+        인용에는 출처가 따라야 한다(§3-4).
+      */}
+      {products.some((p) => p.mfds) && (
+        <p data-testid="mfds-source" style={{ ...ui.sub, fontSize: 12, margin: '16px 0 0' }}>
+          기능성 표시는 식약처 기능성화장품 보고정보 기준이에요
+        </p>
+      )}
     </main>
   );
 }
@@ -135,6 +147,7 @@ function Row({
           {product.endDate ? `${md(product.startDate)} ~ ${md(product.endDate)}` : `D+${daysBetween(product.startDate, date)}`}
         </span>
       </div>
+      {product.mfds && <MfdsMeta m={product.mfds} />}
       <div style={{ ...ui.row, marginTop: 8 }}>
         <button style={{ ...ui.secondary, flex: 1, padding: '8px 10px' }} onClick={() => onEdit(product)}>
           {`${product.name} 수정`}
@@ -151,6 +164,32 @@ function Row({
           {`${product.name} 삭제`}
         </button>
       </div>
+    </div>
+  );
+}
+
+/**
+ * 등록할 때 박제한 식약처 메타(설계 §4-2·§3-4).
+ *
+ * ⚠️ **명사만 선다.** 뱃지는 식약처가 부여한 법정 분류의 인용이고, 앱이 「미백에 효과 있어요」
+ * 같은 문장을 만드는 순간 화장품법 표시·광고 규제와 v1 §5-3 규율을 동시에 어긴다.
+ * 고시 문구(「…도움을 준다.」)를 그대로 싣지 않는 이유도 같다 — 문장은 앱의 목소리로 읽힌다.
+ *
+ * 이미지 슬롯은 없다 — 어떤 무료 소스에도 제품 이미지가 없어(리서치 확정) 텍스트만으로
+ * 서는 카드가 전제다. 뱃지·칩이 그 밀도를 채운다.
+ */
+function MfdsMeta({ m }: { m: MfdsSnapshot }) {
+  // 「SPF50+ PA++++」. 한쪽만 있으면 그 한쪽만, 둘 다 없으면 칩 자체가 없다(빈 칩 방지).
+  const uv = [m.spf && `SPF${m.spf}`, m.pa && `PA${m.pa}`].filter(Boolean).join(' ');
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
+      {m.entpName && <span style={{ fontSize: 12, color: 'var(--text-sub)' }}>{m.entpName}</span>}
+      {m.effects.map((e) => (
+        <span key={e} style={ui.chip}>
+          {e}
+        </span>
+      ))}
+      {uv && <span style={ui.chip}>{uv}</span>}
     </div>
   );
 }
@@ -176,6 +215,44 @@ function ProductForm({
   const [startDate, setStartDate] = useState(initial?.startDate ?? today);
   const [endDate, setEndDate] = useState(initial?.endDate ?? '');
 
+  const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
+  /**
+   * 붙일 스냅샷. **명시로 고른 것만 여기 들어온다**(설계 §4-2) — 타이핑 도중 스친 제안이
+   * 조용히 붙으면 사용자는 자기가 뭘 저장했는지 모른다.
+   */
+  const [snapshot, setSnapshot] = useState<MfdsSnapshot | undefined>(initial?.mfds);
+  /**
+   * 검색을 쉬어야 할 이름. **고른 직후와 수정 폼을 연 직후**가 그렇다 — 안 두면 고르자마자
+   * 그 이름으로 다시 검색해 목록이 도로 열리고, 수정하러 열기만 해도 쿼터가 나간다.
+   */
+  const [settledName, setSettledName] = useState(initial?.name ?? null);
+
+  useEffect(() => {
+    const q = name.trim();
+    // 20만 건에 한 글자는 검색이 아니다.
+    if (q.length < 2 || q === settledName) return void setSuggestions([]);
+
+    const ctrl = new AbortController();
+    // ⚠️ 매 글자마다 부르면 등록 한 번에 요청이 수십 개다(2요청 전략이라 곱절이다).
+    const t = setTimeout(() => {
+      // ⚠️ 실패는 전부 무음이다 — 배너를 띄우는 순간 등록 흐름을 검색이 방해한다(설계 §3-2).
+      searchProducts(q, ctrl.signal).then(setSuggestions, () => setSuggestions([]));
+    }, 300);
+    // 이전 요청을 끊지 않으면 늦게 온 응답이 새 검색 결과를 덮는다.
+    return () => {
+      clearTimeout(t);
+      ctrl.abort();
+    };
+  }, [name, settledName]);
+
+  function pick(s: Suggestion) {
+    setName(s.itemName);
+    setSnapshot(s.snapshot);
+    // 목록은 이걸로 닫힌다 — 위 effect가 「쉬는 이름」을 보고 제안을 비운다(여기서 또 비우면
+    // 어떤 입력으로도 안 밟히는 죽은 줄이 된다).
+    setSettledName(s.itemName);
+  }
+
   const ok = name.trim().length > 0;
 
   return (
@@ -186,9 +263,26 @@ function ProductForm({
           style={{ ...ui.input, textAlign: 'left' }}
           value={name}
           onChange={(e) => setName(e.target.value)}
-          placeholder="예: 세라마이드 토너"
+          /* 품목명에 브랜드 문자열이 대체로 없다(실측 §2-3) — 검색 축을 미리 알려 둔다. */
+          placeholder="예: 수분 토너 (제품명으로 검색돼요)"
         />
       </label>
+
+      {suggestions.length > 0 && (
+        /* 카드 안 인라인이다 — 포털·팝오버를 만들 이유가 없다(설계 §4-2). */
+        <div data-testid="mfds-suggestions" style={{ display: 'grid', gap: 4, marginTop: -6 }}>
+          {suggestions.map((s, i) => (
+            <button
+              key={`${s.snapshot.reportSeq}-${i}`}
+              style={{ ...ui.secondary, textAlign: 'left', padding: '10px 12px' }}
+              onClick={() => pick(s)}
+            >
+              <span style={{ display: 'block', fontSize: 14, color: 'var(--text)' }}>{s.itemName}</span>
+              <span style={{ display: 'block', fontSize: 12, fontWeight: 500 }}>{s.snapshot.entpName}</span>
+            </button>
+          ))}
+        </div>
+      )}
 
       <label style={{ display: 'block' }}>
         <span style={ui.label}>카테고리</span>
@@ -238,6 +332,14 @@ function ProductForm({
                 `undefined`는 `JSON.stringify`가 떨구므로 저장소 왕복도 깨끗하다.
               */
               endDate: endDate || undefined,
+              /*
+                고른 적이 없으면 `undefined`다 — 수기 등록 그대로다(위 `endDate`와 같은 이유로 명시한다).
+
+                ⚠️ **유지는 조건부다**(설계 §3-2): 줄여 쓰기는 살고 갈아치우기는 죽는다.
+                무조건 유지하면 남의 업소명·기능성 뱃지가 다른 제품 카드에 조용히 선다.
+                추가·수정 폼이 같은 저장 지점을 지나므로 판정도 여기 한 곳이면 된다.
+              */
+              mfds: snapshot && keepsSnapshot(name.trim(), snapshot.itemName) ? snapshot : undefined,
             })
           }
         >

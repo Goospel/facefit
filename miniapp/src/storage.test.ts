@@ -211,6 +211,73 @@ describe('제품 — loadProducts / saveProducts', () => {
   });
 });
 
+/**
+ * 식약처 스냅샷(설계 §3-3). **검증 등급은 「표시용」이다** — 카테고리 강등과 같은 급이라
+ * 형태가 어긋나면 `mfds`만 버리고 레코드는 살린다. 제품 기록(이름·기간)이 본체고 API 메타는
+ * 장식이다. 여기서 레코드째 기각하면 메타 오류 하나에 그 제품의 기간 기록이 통째로 증발한다.
+ */
+describe('제품 — 식약처 스냅샷(mfds)', () => {
+  const snap = {
+    reportSeq: '2026026858',
+    itemName: '데이셀디아트셀루미너스커버선크림',
+    entpName: '데이셀코스메틱(주)',
+    effects: ['미백', '자외선차단'],
+    spf: '50+',
+    pa: '++++',
+    fetchedAt: '2026-08-29',
+  };
+
+  it('저장한 스냅샷이 그대로 돌아온다', () => {
+    const s = fakeStorage();
+    saveProducts([product({ mfds: snap })], s);
+
+    expect(loadProducts(s)[0].mfds).toEqual(snap);
+  });
+
+  it('mfds 없는 v1 레코드는 아무 일도 안 일어난다 — 마이그레이션 0', () => {
+    const s = fakeStorage();
+    seed(s, 'facefit.products', [product()]);
+
+    const [got] = loadProducts(s);
+    expect(got).not.toHaveProperty('mfds');
+    expect(got.name).toBe('토너');
+  });
+
+  it.each([
+    ['문자열', '미백'],
+    ['배열', ['미백']],
+    ['null', null],
+    ['reportSeq 누락', { ...snap, reportSeq: undefined }],
+    // ⚠️ 이름 수정 시 「줄여 쓰기냐 갈아치우기냐」의 판정 기준이다(§3-2) — 없으면 판정 자체가
+    // 불가능하고, 그 상태로 살려 두면 남의 뱃지가 조용히 남는다.
+    ['itemName 누락', { ...snap, itemName: undefined }],
+    ['entpName이 문자열이 아님', { ...snap, entpName: 42 }],
+    ['fetchedAt 누락', { ...snap, fetchedAt: undefined }],
+    ['effects가 배열이 아님', { ...snap, effects: '미백' }],
+    ['effects 안에 객체', { ...snap, effects: ['미백', { ko: '주름개선' }] }],
+    ['spf가 객체', { ...snap, spf: { v: '50+' } }],
+    ['pa가 숫자', { ...snap, pa: 4 }],
+  ])('스냅샷이 %s이면 그것만 버리고 제품은 살린다', (_label, mfds) => {
+    // ⚠️ 화면이 이 값을 그대로 그린다 — 객체가 섞여 들어오면 React가 렌더에서 던져 제품 탭이
+    // 통째로 죽는다. 「그 필드만 버린다」의 실질이 여기 있다.
+    const s = fakeStorage();
+    seed(s, 'facefit.products', [{ ...product(), mfds }]);
+
+    const [got] = loadProducts(s);
+    expect(got).not.toHaveProperty('mfds');
+    expect({ id: got.id, name: got.name, startDate: got.startDate }).toEqual({ id: 'p1', name: '토너', startDate: '2026-08-01' });
+  });
+
+  it('SPF·PA 없는 스냅샷은 멀쩡하다 — 선크림이 아닌 제품이 정상 경로다', () => {
+    const s = fakeStorage();
+    seed(s, 'facefit.products', [
+      { ...product(), mfds: { reportSeq: '1', itemName: '더마바이탈나노펩타이드토너', entpName: '(주)피코바이오', effects: [], fetchedAt: '2026-08-29' } },
+    ]);
+
+    expect(loadProducts(s)[0].mfds?.entpName).toBe('(주)피코바이오');
+  });
+});
+
 describe('관찰 기록 — loadNotes / saveNote', () => {
   it('하루에 하나, 재답변은 덮어쓴다', () => {
     const s = fakeStorage();
