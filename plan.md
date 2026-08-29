@@ -8,6 +8,8 @@
 
 ## v1 — 기록이 쌓이는 것까지
 
+> 태스크 1~9 완료(2026-08-29). 남은 것은 태스크 10(콘솔·실기기)뿐이다.
+
 - [x] ✅ **1. 부트스트랩** — restfit 골격 복사 + 이름·포트·appName + 작업 추적 3종
   - [x] `miniapp/` vite 골격(package.json `facefit-miniapp` · dev 5320 · tsconfig · index.html · index.css · ui.ts)
   - [x] `apps-in-toss.config.ts` — `appName: 'facefit'` · webView 플래그 3종 · camera 권한
@@ -21,8 +23,8 @@
 - [x] ✅ **6. Products 화면** — 목록·추가·수정·종료·삭제
 - [x] ✅ **7. History 화면** — 월간 캘린더 · 날짜 시트 · 사진 모두 삭제
 - [x] ✅ **8. Timelapse 화면** — 자동 재생 · 스크럽 · 2× · 제품 구간 바
-- [ ] 🔜 **9. Onboarding + App 배선 + Home** — 3탭 · 전체화면 3종
-- [ ] ⏸ **10. 검수 준비** — 콘솔 앱 생성 · 개인정보처리방침 · 릴리스 노트 · 실기기 확인
+- [x] ✅ **9. Onboarding + App 배선 + Home** — 3탭 · 전체화면 3종
+- [ ] 🔜 **10. 검수 준비** — 콘솔 앱 생성 · 개인정보처리방침 · 릴리스 노트 · 실기기 확인
   - 이 태스크는 **구현 범위 밖**이다. `FLASH_MS`(500) · `BASE_FPS`(6)는 여기의 실기기 실측으로 확정한다.
 
 ## ⚠️ 리스크 · 미검증 가정 (설계 §11)
