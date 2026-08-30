@@ -43,15 +43,7 @@ export function fitWithin(w: number, h: number, max = MAX_SIDE): { width: number
  * 오버로드 때문에 그 좁힌 타입이 실제 컨텍스트와 안 맞아, 캐스트가 **구현 쪽**으로 새어
  * 들어온다. 캐스트는 테스트의 가짜가 지는 편이 낫다.
  */
-export function captureJpeg(
-  video: HTMLVideoElement,
-  canvas: HTMLCanvasElement,
-  /**
-   * `mirror`는 **전면 프리뷰와 짝**이다(위 `PREVIEW_TRANSFORM`) — 얼굴 촬영은 기본값 그대로 둔다.
-   * 끄는 자리는 후면으로 찍는 **제품 라벨**뿐이다: 거울 글자는 OS 텍스트 인식이 못 읽는다.
-   */
-  opts: { mirror?: boolean } = {},
-): Promise<Captured | null> {
+export function captureJpeg(video: HTMLVideoElement, canvas: HTMLCanvasElement): Promise<Captured | null> {
   // 스트림을 붙인 직후 몇 프레임은 크기가 0이다. 그대로 그리면 **빈 사진**이 저장되는데,
   // 저장은 성공으로 보고되므로 사용자는 한참 뒤에야 안다 — 증발보다 나쁘다.
   if (!video.videoWidth || !video.videoHeight) return Promise.resolve(null);
@@ -65,7 +57,7 @@ export function captureJpeg(
 
   // 좌우 반전 — 프리뷰(`PREVIEW_TRANSFORM`)와 **같은 방향**이어야 한다.
   // 다섯째 인자 `width`가 뒤집힌 그림을 캔버스 안으로 되민다(빼면 캔버스 밖으로 나가 까만 사진이 된다).
-  if (opts.mirror ?? true) ctx.setTransform(-1, 0, 0, 1, width, 0);
+  ctx.setTransform(-1, 0, 0, 1, width, 0);
   ctx.drawImage(video, 0, 0, width, height);
 
   return new Promise((resolve) => {

@@ -29,24 +29,6 @@ describe('probeCamera', () => {
     await expect(probeCamera(md(async () => stream), { timeoutMs: 1000 })).resolves.toEqual({ ok: true, stream });
   });
 
-  it('기본은 전면이다 — 얼굴 촬영이 이 함수의 주 사용처다', async () => {
-    const seen: MediaStreamConstraints[] = [];
-    const { stream } = fakeStream();
-
-    await probeCamera(md(async (c) => (seen.push(c), stream)), { timeoutMs: 1000 });
-
-    expect(seen).toEqual([{ video: { facingMode: 'user' } }]);
-  });
-
-  it('제품 촬영은 후면을 연다 — 라벨은 화면을 보며 맞출 필요가 없고 화질도 낫다', async () => {
-    const seen: MediaStreamConstraints[] = [];
-    const { stream } = fakeStream();
-
-    await probeCamera(md(async (c) => (seen.push(c), stream)), { timeoutMs: 1000, facing: 'environment' });
-
-    expect(seen).toEqual([{ video: { facingMode: 'environment' } }]);
-  });
-
   it('거절되면 에러 이름과 메시지를 원문 그대로 담는다', async () => {
     // 실기기 화면에서 이 문자열을 **눈으로 읽는 것**이 프로브의 목적이다. 「실패했습니다」로
     // 뭉개면 NotAllowedError(권한)와 NotFoundError(카메라 없음)를 구별할 수단이 사라진다.

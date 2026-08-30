@@ -6,7 +6,6 @@ import { History } from './screens/History';
 import { Home } from './screens/Home';
 import { Onboarding } from './screens/Onboarding';
 import { Products } from './screens/Products';
-import { ProductShot } from './screens/ProductShot';
 import { Timelapse } from './screens/Timelapse';
 import {
   isOnboarded,
@@ -45,7 +44,7 @@ export function App() {
    *
    * 닫으면 `null`로 돌아갈 뿐이라 **보던 탭이 그대로 복원된다**(`tab`을 안 건드린다).
    */
-  const [view, setView] = useState<'shoot' | 'timelapse' | 'product-shot' | null>(null);
+  const [view, setView] = useState<'shoot' | 'timelapse' | null>(null);
   const [products, setProducts] = useState(loadProducts);
   const [notes, setNotes] = useState(loadNotes);
 
@@ -76,15 +75,11 @@ export function App() {
   // 전체화면에서는 탭바가 없다 — 카메라를 켜 놓고 딴 화면으로 샐 이유가 없다.
   if (view === 'shoot') return <FacePhoto onClose={() => setView(null)} onNote={saveNoteAnd} />;
   if (view === 'timelapse') return <Timelapse products={products} onClose={() => setView(null)} />;
-  // 임시 확인용 — OS 텍스트 인식이 웹뷰에서 열리는지 재고 나면 걷거나 등록 폼 안으로 옮긴다.
-  if (view === 'product-shot') return <ProductShot onClose={() => setView(null)} />;
 
   return (
     <>
       {tab === 'home' && <Home products={products} notes={notes} date={date} onShoot={() => setView('shoot')} />}
-      {tab === 'products' && (
-        <Products products={products} onChange={saveProductsAnd} date={date} onShootProduct={() => setView('product-shot')} />
-      )}
+      {tab === 'products' && <Products products={products} onChange={saveProductsAnd} date={date} />}
       {tab === 'history' && <History notes={notes} onOpenTimelapse={() => setView('timelapse')} />}
 
       <nav style={navStyle}>

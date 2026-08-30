@@ -7,16 +7,10 @@ export type CameraProbeResult =
   | { ok: false; detail: string };
 
 /**
- * 얼굴 촬영은 매일 **같은 구도**로 찍는 것이 전부라 전면 고정이다. 후면으로 돌리면 화면이 안 보여
- * 고스트 정렬이 성립하지 않는다 — 촬영 화면의 전/후면 토글은 v2로 미룬 것이 아니라 이 UX에서
- * **성립하지 않는다**.
- *
- * 후면은 **다른 화면(제품 라벨 촬영)의 것**이다 — 거기서는 맞출 고스트가 없고 화면을 볼 필요도
- * 없어서 전면일 이유가 하나도 없다. 그래서 토글이 아니라 **부르는 쪽이 정하는 인자**다.
+ * 눈바디는 매일 **같은 구도**로 찍는 것이 전부라 전면 고정이다. 후면으로 돌리면 화면이 안 보여
+ * 고스트 정렬이 성립하지 않는다 — 전/후면 토글은 v2로 미룬 것이 아니라 이 UX에서 **성립하지 않는다**.
  */
-export type Facing = 'user' | 'environment';
-
-const constraints = (facing: Facing): MediaStreamConstraints => ({ video: { facingMode: facing } });
+const CONSTRAINTS: MediaStreamConstraints = { video: { facingMode: 'user' } };
 
 /** 트랙을 끄지 않으면 카메라가 켜진 채로 남는다. 화면과 프로브가 같은 함수를 쓴다. */
 export function stopStream(stream: MediaStream): void {
@@ -33,7 +27,7 @@ export function stopStream(stream: MediaStream): void {
  * 타임아웃으로 끝난다. 특히 **토스 웹뷰가 권한 프롬프트를 삼켜 영영 pending인** 실패 모드가
  * 실제로 있어서, 타임아웃이 없으면 화면이 「카메라 켜는 중」에서 굳는다.
  */
-export function probeCamera(md: MediaDevicesLike, opts: { timeoutMs: number; facing?: Facing }): Promise<CameraProbeResult> {
+export function probeCamera(md: MediaDevicesLike, opts: { timeoutMs: number }): Promise<CameraProbeResult> {
   // 권한 문제가 아니라 API 자체가 없는 경우다. 여기가 첫 번째 감별 대상이라 따로 이름을 준다.
   if (!md) return Promise.resolve({ ok: false, detail: 'unsupported' });
 
@@ -48,7 +42,7 @@ export function probeCamera(md: MediaDevicesLike, opts: { timeoutMs: number; fac
       resolve(result);
     }
 
-    md.getUserMedia(constraints(opts.facing ?? 'user')).then(
+    md.getUserMedia(CONSTRAINTS).then(
       (stream) => {
         // 타임아웃으로 이미 끝났다면 이 스트림을 화면에 붙일 사람이 없다 —
         // 그냥 두면 **판정이 끝난 뒤에도 카메라가 켜진 채**로 남는다.

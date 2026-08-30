@@ -82,16 +82,6 @@ describe('captureJpeg', () => {
     expect(calls).toEqual(['setTransform(-1,0,0,1,720,0)', 'drawImage(0,0,720,1280)', 'toBlob(image/jpeg,0.8)']);
   });
 
-  it('제품 촬영은 반전을 안 건다 — 거울 글자는 OS 텍스트 인식이 못 읽는다', async () => {
-    const { canvas, calls } = fakeCanvas();
-
-    await captureJpeg(video(720, 1280), canvas, { mirror: false });
-
-    // `setTransform` 호출 자체가 없다 — 캔버스는 크기를 넣는 순간 변환이 초기화되므로
-    // 항등 변환을 따로 걸 이유가 없다.
-    expect(calls).toEqual(['drawImage(0,0,720,1280)', 'toBlob(image/jpeg,0.8)']);
-  });
-
   it('프리뷰 변환과 캡처 변환이 같은 방향이다 — 갈리면 고스트가 영영 안 맞는다', async () => {
     const { canvas, setTransform } = fakeCanvas();
     await captureJpeg(video(720, 1280), canvas);
