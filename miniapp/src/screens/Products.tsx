@@ -23,12 +23,15 @@ export function Products({
   products,
   onChange,
   date,
+  onShootProduct,
 }: {
   products: Product[];
   /** 다음 목록 전체를 준다 — 저장은 App이 한다(화면은 저장소를 모른다). */
   onChange: (next: Product[]) => void;
   /** 오늘. 「사용 중」 판정과 「오늘까지 쓰고 종료」가 같은 값을 봐야 한다. */
   date: string;
+  /** 임시 확인용 제품 촬영 화면을 연다. 없으면 버튼 자체가 안 선다(테스트가 안 걸린다). */
+  onShootProduct?: () => void;
 }) {
   const [editing, setEditing] = useState<Editing>(null);
 
@@ -70,6 +73,13 @@ export function Products({
       ) : (
         <button style={ui.primary} onClick={() => setEditing('new')}>
           제품 추가
+        </button>
+      )}
+
+      {/* 임시 — 웹뷰에서 사진 속 글자를 꾸욱 눌러 복사할 수 있는지 재는 버튼. 재고 나면 걷는다. */}
+      {!editing && onShootProduct && (
+        <button style={{ ...ui.secondary, marginTop: 8 }} onClick={onShootProduct}>
+          제품 사진 찍기 (테스트)
         </button>
       )}
 
