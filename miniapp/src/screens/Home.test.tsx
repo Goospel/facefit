@@ -152,6 +152,28 @@ describe('아침 알림 진입점', () => {
     expect(screen.getByRole('button', { name: ASK })).toBeTruthy();
     expect(screen.queryByRole('button', { name: DONE })).toBeNull();
   });
+
+  it('언제 오는지 말한다 — 「받겠다」를 고르는 데 필요한 유일한 정보다', async () => {
+    setup();
+
+    expect((await screen.findByTestId('notify-sub')).textContent).toContain('아침 8시');
+  });
+
+  /*
+    ⚠️ **스위치로 그리지 않는 이유가 이 줄에 있다.** 동의의 단일 출처는 토스이고 철회는
+    앱이 감지할 수 없다(설계 §3-5) — 상태를 그리면 동의한 사람에게도 매번 「꺼짐」으로
+    보인다. 그래서 오른쪽은 상태가 아니라 **행동**이고, 끄는 곳이 앱 밖이라는 사실을
+    신청 직후에 말해 준다. 안 말하면 사용자는 앱에서 끄는 법을 찾다 못 찾는다.
+  */
+  it('신청한 뒤에는 끄는 곳이 앱 밖이라고 말한다 — 앱에는 끌 방법이 없다', async () => {
+    setup();
+    fireEvent.click(await screen.findByRole('button', { name: ASK }));
+
+    const [onDone] = vi.mocked(requestNotifyAgreement).mock.calls[0];
+    act(() => onDone(true));
+
+    expect(screen.getByTestId('notify-sub').textContent).toContain('토스 알림 설정');
+  });
 });
 
 describe('사용 중 제품 요약', () => {

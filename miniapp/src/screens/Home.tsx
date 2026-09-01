@@ -77,23 +77,6 @@ export function Home({
         )}
       </div>
 
-      {/*
-        **동의 상태를 보고 숨기지 않는다** — 이미 동의한 사람이 눌러도 `alreadyAgreed`로
-        무해하게 끝나고(멱등), 토스 설정에서 철회한 사람의 재동의 경로를 그대로 겸한다
-        (설계 §3-2 — 철회는 앱이 알 수 없다).
-
-        ⚠️ 숨기는 조건은 **동의 여부가 아니라 지원 여부**다. 시트를 열 수 없는 기기
-        (구버전 토스·토스 밖)에서 버튼만 남기면 「눌렀는데 아무 일도 없다」가 된다.
-      */}
-      {isNotifySupported() && (
-        <button
-          style={{ ...ui.ghost, width: '100%', marginTop: 8 }}
-          onClick={() => requestNotifyAgreement((agreed) => agreed && setNotifyAsked(true))}
-        >
-          {notifyAsked ? '알림 신청됨' : '아침 알림 받기'}
-        </button>
-      )}
-
       <h2 style={{ ...ui.h2, fontSize: 14, color: 'var(--text-sub)', marginTop: 24 }}>{`쓰는 중 ${using.length}`}</h2>
       {using.length === 0 ? (
         // 제품이 없으면 이 앱의 절반이 빈다 — 사진만 쌓이고 「무엇을 쓰는 동안」이 없다.
@@ -107,6 +90,45 @@ export function Home({
             </span>
           ))}
         </div>
+      )}
+
+      {/*
+        **동의 상태를 보고 숨기지 않는다** — 이미 동의한 사람이 눌러도 `alreadyAgreed`로
+        무해하게 끝나고(멱등), 토스 설정에서 철회한 사람의 재동의 경로를 그대로 겸한다
+        (설계 §3-2 — 철회는 앱이 알 수 없다).
+
+        ⚠️ 숨기는 조건은 **동의 여부가 아니라 지원 여부**다. 시트를 열 수 없는 기기
+        (구버전 토스·토스 밖)에서 버튼만 남기면 「눌렀는데 아무 일도 없다」가 된다.
+      */}
+      {isNotifySupported() && (
+        <>
+          {/* 제품 탭의 백업 스위치와 같은 규칙 — 설정성 컨트롤은 목록 뒤, 구분선 아래. */}
+          <hr style={{ border: 0, borderTop: '1px solid var(--line)', margin: '24px 0 16px' }} />
+          <button
+            /*
+              ⚠️ **스위치가 아니다.** 동의의 단일 출처는 토스이고 철회는 앱이 감지할 수 없다
+              (설계 §3-5) — 상태를 그리면 동의한 사람에게도 앱을 열 때마다 「꺼짐」으로 보인다.
+              백업 스위치와 모양은 같은 가족이되 오른쪽이 상태가 아니라 **행동**인 이유다.
+
+              접근성 이름은 행동 하나로 고정한다 — 본문을 이어 붙이면 스크린리더가 설명까지
+              버튼 이름으로 읽는다.
+            */
+            aria-label={notifyAsked ? '알림 신청됨' : '아침 알림 받기'}
+            style={{ ...ui.card, display: 'flex', alignItems: 'center', gap: 12, width: '100%', textAlign: 'left' }}
+            onClick={() => requestNotifyAgreement((agreed) => agreed && setNotifyAsked(true))}
+          >
+            <span style={{ flex: 1 }}>
+              <span style={{ display: 'block', fontSize: 15, fontWeight: 600, color: 'var(--text)' }}>아침 알림</span>
+              <span data-testid="notify-sub" style={{ display: 'block', fontSize: 13, marginTop: 2, color: 'var(--text-sub)' }}>
+                {notifyAsked ? '토스 알림 설정에서 언제든 끌 수 있어요' : '매일 아침 8시에 찍을 시간을 알려드려요'}
+              </span>
+            </span>
+            {/* 눌러서 여는 것임을 오른쪽이 말한다 — 신청 뒤에도 멱등이라 자리를 지킨다. */}
+            <span aria-hidden style={{ fontSize: 14, fontWeight: 600, color: notifyAsked ? 'var(--text-weak)' : 'var(--blue)' }}>
+              {notifyAsked ? '신청됨' : '받기'}
+            </span>
+          </button>
+        </>
       )}
 
       <p style={{ ...ui.sub, marginTop: 24 }}>{LOCAL_ONLY}</p>
