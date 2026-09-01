@@ -4,6 +4,34 @@
 > 앞으로 할 일은 [`plan.md`](plan.md), 함정은 [`claude-docs/troubleshooting.md`](claude-docs/troubleshooting.md).
 > PR 번호는 적지 않는다 — 미래에 확정되는 값이라 stale이 조용히 쌓인다. 찾으려면 제목으로 `git log --grep`.
 
+## 2026-09-01 · v3-1 태스크 3(1/2) — 동거 배선과 AWS 선행 (실배포 직전까지)
+
+AWS 선행 작업을 CLI로 직접 만들고 검증했다. A 레코드 `facefit-api.booktimer.app`(TTL 60 —
+나중에 분리할 때 전환을 1분으로 줄이는 유일한 준비다) · SSM 파라미터 3개 · ECR 리포지토리 ·
+GitHub 시크릿 4개.
+
+설계와 두 군데 달리했다. **SSM 이름을 `/facefit/db-password`가 아니라
+`/facefit/SPRING_DATASOURCE_*`로** 만들었다 — BookTimer가 `/<프로젝트>/<환경변수명>` 꼴을 쓰고
+있어서, 같은 규칙이면 이름이 SSM·환경변수·Spring 프로퍼티 세 곳에서 글자 그대로 같아지고
+매핑 표가 아예 필요 없어진다(BookTimer는 이름이 어긋난 것들 때문에 매핑 표를 유지하고 있고
+그 표가 유일 출처다). 그리고 **OIDC 역할을 기존 것에 얹지 않고 `facefitDeployRole`을 새로
+만들었다** — 기존 역할에 facefit을 신뢰 대상으로 추가하면 facefit CI가 BookTimer 배포 권한을
+통째로 갖는다. 새 역할은 ECR `facefit` 리포지토리와 S3 `deploy-facefit/` 접두어로 좁혔다.
+
+코드는 Dockerfile · `compose.facefit.yaml`(별개 compose 프로젝트로 `booktimer_default`
+네트워크에 external 참여 · `mem_limit 320m` · **ports 없음**) · `deploy-on-ec2.sh` ·
+배포 워크플로다. **blue/green을 안 만든다** — 전환 순간 컨테이너가 2개가 되는데 이 박스는
+BookTimer가 이미 그럴 때 물리 메모리를 넘긴다. 대신 워크플로 마지막의 라이브 헬스체크가
+Caddy·DNS·인증서·컨테이너·DB를 한 번에 통과해야만 성공으로 친다.
+
+선행 확인에서 하나 건졌다 — `backup-mysql.sh`가 `booktimer`에 하드코딩이라 확장을 안 받지만,
+`--databases`에 `facefit`을 **덧붙이면** 백업 경로가 하나로 유지된다. 그 스크립트 주석이
+「백업이 엿새 동안 조용히 0건이었다」는 실패를 기록하고 있어, 경로를 둘로 늘리지 않는 쪽이 맞다.
+
+함정 1건: SSM 명령 JSON에 한글을 넣으면 AWS CLI가 Windows 로케일로 읽어 디코딩에 실패한다(T-006).
+
+남은 것은 실서버 단계다 — BookTimer 레포 PR(Caddy 블록)이 **먼저** 배포돼야 헬스체크가 통과한다.
+
 ## 2026-09-01 · v3-1 태스크 2 — backup API (불변식의 서버측 집행)
 
 `PUT`/`GET`/`DELETE /v1/backup`. TDD로 Red 23건을 먼저 보고 Green 38건으로 닫았다.
