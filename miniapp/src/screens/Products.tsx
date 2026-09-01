@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 
+import { formatBackupTime } from '../logic/backup';
 import { daysBetween } from '../logic/calendar';
 import { keepsSnapshot, searchProducts, type Suggestion } from '../logic/mfds';
 import { CATEGORY_KO, isActive, sortProducts } from '../logic/products';
@@ -23,12 +24,18 @@ export function Products({
   products,
   onChange,
   date,
+  backup,
 }: {
   products: Product[];
   /** 다음 목록 전체를 준다 — 저장은 App이 한다(화면은 저장소를 모른다). */
   onChange: (next: Product[]) => void;
   /** 오늘. 「사용 중」 판정과 「오늘까지 쓰고 종료」가 같은 값을 봐야 한다. */
   date: string;
+  /**
+   * 기록 백업(v3 §3-4). **`undefined`면 표면 자체가 없다** — 쓸 수 없는 기기에 스위치만
+   * 남기면 「눌렀는데 아무 일도 없다」가 된다(알림 버튼과 같은 규율). 그 판단은 App이 한다.
+   */
+  backup?: { enabled: boolean; lastBackupAt: string | null; onToggle: () => void };
 }) {
   const [editing, setEditing] = useState<Editing>(null);
 
@@ -106,9 +113,93 @@ export function Products({
           기능성 표시는 식약처 기능성화장품 보고정보 기준이에요
         </p>
       )}
+
+      {backup && <BackupToggle {...backup} />}
     </main>
   );
 }
+
+/**
+ * 기록 백업 스위치(v3 §3-4).
+ *
+ * **목록 뒤에 선다** — 한 번 켜면 다시 만질 일이 없는 설정이라 이 탭의 주 행동(제품 추가)
+ * 위에 상주할 이유가 없다. 못 찾을 일도 없다: 첫 등록 때 1회 제안 카드가 같은 탭에서 뜬다.
+ * 「오늘」 탭이 아닌 이유는 그 화면이 **오늘 찍었는가**에만 답하기 때문이고, 백업이 지키는
+ * 것이 제품과 관찰이라 여기가 그 대상 옆이다.
+ *
+ * ⚠️ 상태는 **스위치가** 말한다(`role="switch"` + `aria-checked` + 손잡이 위치). 처음엔 버튼
+ * 라벨 하나로 뒀다가, 실기기에서 「기록 백업 켜기」를 보고 **이미 켜진 줄 안** 사례가 있었다
+ * (T-010) — 라벨에 행동만 적으면 상태로 읽힌다. 스위치에는 행동 문구 자체가 없다.
+ *
+ * 아래 줄은 그래서 상태를 되풀이하지 않고 **왜 켜는지**를 말한다. 단 하나 **켜 놓고 안 되는
+ * 상태**만은 색까지 바꾼다 — 사용자는 지켜진다고 믿는데 실제로는 아무것도 안 올라간,
+ * 이 기능에서 제일 위험한 상태라 회색으로 두면 정상처럼 읽힌다.
+ */
+function BackupToggle({
+  enabled,
+  lastBackupAt,
+  onToggle,
+}: {
+  enabled: boolean;
+  lastBackupAt: string | null;
+  onToggle: () => void;
+}) {
+  const at = enabled ? formatBackupTime(lastBackupAt) : null;
+  const failing = enabled && !at;
+
+  return (
+    <>
+      {/* 목록과 설정 사이의 선. 없으면 마지막 제품 카드에 붙어 목록의 일부로 읽힌다. */}
+      <hr style={{ border: 0, borderTop: '1px solid var(--line)', margin: '24px 0 16px' }} />
+      <button
+        // 누르는 자리는 **행 전체**다 — 51px 스위치만 노리게 하면 엄지로 자주 빗나간다.
+        role="switch"
+        aria-checked={enabled}
+        onClick={onToggle}
+        style={{ ...ui.card, display: 'flex', alignItems: 'center', gap: 12, width: '100%', textAlign: 'left' }}
+      >
+        <span style={{ flex: 1 }}>
+          <span style={{ display: 'block', fontSize: 15, fontWeight: 600, color: 'var(--text)' }}>기록 백업</span>
+          <span
+            data-testid="backup-state"
+            style={{ display: 'block', fontSize: 13, marginTop: 2, color: failing ? 'var(--amber)' : 'var(--text-sub)' }}
+          >
+            {enabled
+              ? at
+                ? `마지막 백업 ${at}`
+                : '아직 백업하지 못했어요'
+              : '기기를 바꿔도 제품과 관찰이 남아요'}
+          </span>
+        </span>
+        {/* 상태는 위의 `aria-checked`가 이미 말한다 — 여기서 또 읽히면 같은 말이 두 번 난다. */}
+        <span aria-hidden style={{ ...trackStyle, background: enabled ? 'var(--blue)' : 'var(--line-strong)' }}>
+          <span style={{ ...thumbStyle, transform: enabled ? 'translateX(20px)' : 'none' }} />
+        </span>
+      </button>
+    </>
+  );
+}
+
+/** iOS 스위치 치수. 토스 안에서 도는 앱이라 사용자가 이미 아는 형태를 그대로 쓴다. */
+const trackStyle: React.CSSProperties = {
+  boxSizing: 'border-box',
+  flexShrink: 0,
+  width: 51,
+  height: 31,
+  padding: 2,
+  borderRadius: 999,
+  transition: 'background 0.2s',
+};
+
+const thumbStyle: React.CSSProperties = {
+  display: 'block',
+  width: 27,
+  height: 27,
+  borderRadius: 999,
+  background: '#fff',
+  boxShadow: '0 1px 3px rgba(0, 0, 0, 0.2)',
+  transition: 'transform 0.2s',
+};
 
 function Section({ title, testId, children }: { title: string; testId: string; children: React.ReactNode }) {
   return (

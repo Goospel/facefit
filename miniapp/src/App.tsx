@@ -212,12 +212,13 @@ export function App() {
 
   return (
     <>
-      {tab === 'home' && (
-        <Home
+      {tab === 'home' && <Home products={products} notes={notes} date={date} onShoot={() => setView('shoot')} />}
+      {tab === 'products' && (
+        <Products
           products={products}
-          notes={notes}
+          onChange={saveProductsAnd}
           date={date}
-          onShoot={() => setView('shoot')}
+          /* 백업이 지키는 것이 제품·관찰이라 스위치도 그 옆에 산다(1회 제안도 이 탭에서 뜬다). */
           backup={
             backupSupported
               ? {
@@ -229,7 +230,6 @@ export function App() {
           }
         />
       )}
-      {tab === 'products' && <Products products={products} onChange={saveProductsAnd} date={date} />}
       {tab === 'history' && <History notes={notes} onOpenTimelapse={() => setView('timelapse')} />}
 
       {/*
