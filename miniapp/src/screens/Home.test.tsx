@@ -103,7 +103,16 @@ describe('오늘의 관찰 답', () => {
  */
 describe('아침 알림 진입점', () => {
   const ASK = '아침 알림 받기';
-  const DONE = '알림 신청됨';
+  const DONE = '아침 알림 켜짐';
+
+  /** 눌러서 토스가 준 결과를 흘려 넣는다. 이 셋이 SDK가 주는 전부다(+ 우리가 만든 `unavailable`). */
+  async function press(result: 'newAgreement' | 'alreadyAgreed' | 'agreementRejected' | 'unavailable') {
+    fireEvent.click(await screen.findByRole('button', { name: ASK }));
+    const [onDone] = vi.mocked(requestNotifyAgreement).mock.calls[0];
+    act(() => onDone(result));
+  }
+
+  const sub = () => screen.getByTestId('notify-sub').textContent ?? '';
 
   it('오늘 찍었든 안 찍었든 늘 같은 자리에 있다 — 재동의 경로를 겸한다', async () => {
     setup();
@@ -131,28 +140,6 @@ describe('아침 알림 진입점', () => {
     expect(requestNotifyAgreement).toHaveBeenCalledTimes(1);
   });
 
-  it('동의 결과가 오면 신청됐다고 말한다', async () => {
-    setup();
-    fireEvent.click(await screen.findByRole('button', { name: ASK }));
-
-    const [onDone] = vi.mocked(requestNotifyAgreement).mock.calls[0];
-    act(() => onDone(true));
-
-    expect(screen.getByRole('button', { name: DONE })).toBeTruthy();
-    expect(screen.queryByRole('button', { name: ASK })).toBeNull();
-  });
-
-  it('동의 없이 끝나면(거절·오류) 문구가 그대로다 — 신청되지도 않은 것을 신청됐다고 하지 않는다', async () => {
-    setup();
-    fireEvent.click(await screen.findByRole('button', { name: ASK }));
-
-    const [onDone] = vi.mocked(requestNotifyAgreement).mock.calls[0];
-    act(() => onDone(false));
-
-    expect(screen.getByRole('button', { name: ASK })).toBeTruthy();
-    expect(screen.queryByRole('button', { name: DONE })).toBeNull();
-  });
-
   it('언제 오는지 말한다 — 「받겠다」를 고르는 데 필요한 유일한 정보다', async () => {
     setup();
 
@@ -160,19 +147,65 @@ describe('아침 알림 진입점', () => {
   });
 
   /*
-    ⚠️ **스위치로 그리지 않는 이유가 이 줄에 있다.** 동의의 단일 출처는 토스이고 철회는
-    앱이 감지할 수 없다(설계 §3-5) — 상태를 그리면 동의한 사람에게도 매번 「꺼짐」으로
-    보인다. 그래서 오른쪽은 상태가 아니라 **행동**이고, 끄는 곳이 앱 밖이라는 사실을
-    신청 직후에 말해 준다. 안 말하면 사용자는 앱에서 끄는 법을 찾다 못 찾는다.
+    ⚠️ **누른 결과가 화면에 안 보이면 그건 무음 폴백이 아니라 깜깜한 것이다**(T-010의 두 번째
+    결함). 실기기에서 「받기」를 눌렀는데 아무 변화가 없어 **켜진 건지 아닌 건지 알 수 없다**는
+    보고를 받았다(2026-09-01).
+
+    상태를 물어보는 API가 없어서(SDK 실측: `Notification`에는 `requestAgreement` 하나뿐)
+    렌더 시점에는 여전히 모른다. 하지만 **누르는 순간만큼은 토스가 진실을 준다** —
+    `newAgreement`(방금 켜짐)와 `alreadyAgreed`(원래 켜져 있음)를 구별해서. 그 순간을
+    화면에 그대로 옮기는 것이 이 앱이 할 수 있는 최선이고, 옛 코드는 그걸 boolean으로
+    뭉개 버려 **이미 켠 사용자에게 해 줄 말이 없었다.**
   */
-  it('신청한 뒤에는 끄는 곳이 앱 밖이라고 말한다 — 앱에는 끌 방법이 없다', async () => {
+  it('방금 켜졌으면 켰다고 말한다', async () => {
     setup();
-    fireEvent.click(await screen.findByRole('button', { name: ASK }));
 
-    const [onDone] = vi.mocked(requestNotifyAgreement).mock.calls[0];
-    act(() => onDone(true));
+    await press('newAgreement');
 
-    expect(screen.getByTestId('notify-sub').textContent).toContain('토스 알림 설정');
+    expect(sub()).toContain('알림을 켰어요');
+    expect(screen.getByRole('button', { name: DONE })).toBeTruthy();
+  });
+
+  it('이미 켜져 있었으면 그렇다고 말한다 — 「켜진 건지 모르겠다」에 답하는 유일한 줄이다', async () => {
+    setup();
+
+    await press('alreadyAgreed');
+
+    expect(sub()).toContain('이미 켜져 있어요');
+    expect(screen.getByRole('button', { name: DONE })).toBeTruthy();
+  });
+
+  it('켜진 뒤에는 끄는 곳이 앱 밖이라고 말한다 — 앱에는 끌 방법이 없다', async () => {
+    setup();
+
+    await press('alreadyAgreed');
+
+    // 어느 줄에 적히든 상관없다 — 잠그는 것은 **그 말이 화면에 있는가**다.
+    expect(screen.getByText(/토스 알림 설정/)).toBeTruthy();
+  });
+
+  it('거절하면 안 켜졌다고 말하고 다시 누를 수 있게 둔다 — 안 된 것을 됐다고 하지 않는다', async () => {
+    setup();
+
+    await press('agreementRejected');
+
+    expect(sub()).toContain('켜지 않았어요');
+    expect(screen.getByRole('button', { name: ASK })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: DONE })).toBeNull();
+  });
+
+  /*
+    ⚠️ **거절과 갈라서 말한다.** 브릿지가 죽어 못 물어본 것을 「안 켰어요」로 적으면 거짓말이고,
+    사용자는 자기가 거절한 줄 알고 다시 안 누른다. 색까지 바꾸는 이유는 이게 **앱 쪽 고장**이라
+    사용자가 할 일이 「다시 눌러 보기」밖에 없기 때문이다.
+  */
+  it('열지 못했으면 거절과 다르게 말한다 — 못 물어본 것을 거절로 적지 않는다', async () => {
+    setup();
+
+    await press('unavailable');
+
+    expect(sub()).toContain('열 수 없어요');
+    expect(screen.getByTestId('notify-sub').getAttribute('style')).toContain('--amber');
   });
 });
 

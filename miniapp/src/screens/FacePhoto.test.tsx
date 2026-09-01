@@ -907,22 +907,26 @@ describe('촬영 화면 — 내일 알림 제안', () => {
     expect(onClose).not.toHaveBeenCalled();
 
     const [onDone] = vi.mocked(requestNotifyAgreement).mock.calls[0];
-    act(() => onDone(true));
+    act(() => onDone('newAgreement'));
 
     expect(onClose).toHaveBeenCalled();
   });
 
-  it('동의하지 않고 끝나도(거절·오류) 촬영 흐름은 그대로 끝난다', async () => {
-    // 설계 §3-2: 실패는 조용히 접는다 — 알림이 안 되는 것이 촬영을 붙잡는 이유가 될 수 없다.
-    const { onClose } = await answer();
-    await screen.findByText(ASK);
-    fireEvent.click(btn('알림 받기'));
+  // 이 화면은 결과를 **안 본다** — 어떻게 끝나든 닫는 것이 전부다(문구는 홈이 말한다).
+  it.each(['agreementRejected', 'unavailable'] as const)(
+    '%s로 끝나도 촬영 흐름은 그대로 끝난다',
+    async (result) => {
+      // 설계 §3-2: 실패는 조용히 접는다 — 알림이 안 되는 것이 촬영을 붙잡는 이유가 될 수 없다.
+      const { onClose } = await answer();
+      await screen.findByText(ASK);
+      fireEvent.click(btn('알림 받기'));
 
-    const [onDone] = vi.mocked(requestNotifyAgreement).mock.calls[0];
-    act(() => onDone(false));
+      const [onDone] = vi.mocked(requestNotifyAgreement).mock.calls[0];
+      act(() => onDone(result));
 
-    expect(onClose).toHaveBeenCalled();
-  });
+      expect(onClose).toHaveBeenCalled();
+    },
+  );
 
   it('「괜찮아요」는 동의 화면을 안 열고 그냥 닫는다', async () => {
     const { onClose } = await answer();

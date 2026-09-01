@@ -69,7 +69,9 @@ describe('알림 동의 요청 — 지원 여부', () => {
 
     expect(() => requestNotifyAgreement(onDone)).not.toThrow();
     // 끝난 것으로 알린다 — 안 그러면 부른 화면이 콜백을 영영 기다린다.
-    expect(onDone).toHaveBeenCalledWith(false);
+    // ⚠️ **거절이 아니라 `unavailable`이다** — 사용자가 거절한 것과 우리가 못 물어본 것은
+    // 화면이 해야 할 말이 다르다(「안 켰어요」 vs 「지금은 열 수 없어요」).
+    expect(onDone).toHaveBeenCalledWith('unavailable');
   });
 });
 
@@ -83,15 +85,19 @@ describe('알림 동의 요청 — 결과 전달', () => {
     expect(TEMPLATE_CODE).toBe('facefit-daily-photo-reminder');
   });
 
-  it.each(['newAgreement', 'alreadyAgreed'] as const)('%s면 동의된 것으로 알린다', (type) => {
-    // 이미 동의한 사용자가 다시 눌러도 `alreadyAgreed`다 — **호출이 멱등이라** 앱이
-    // 동의 상태를 추적할 필요가 없다(설계 §3-2의 전제).
+  it.each(['newAgreement', 'alreadyAgreed'] as const)('%s를 뭉개지 않고 그대로 넘긴다', (type) => {
+    /*
+      ⚠️ **둘을 boolean 하나로 합치면 안 된다.** `alreadyAgreed`는 「지금 켜져 있다」는
+      뜻이고, 상태를 물어보는 API가 없는 이 SDK에서 **그것이 유일하게 진실을 아는 순간**이다
+      (`Notification`에는 `requestAgreement` 하나뿐 — 실측). 합치면 화면은 「방금 켰다」와
+      「원래 켜져 있었다」를 구별 못 해, 이미 켠 사용자에게 아무 말도 못 한다.
+    */
     const onDone = vi.fn();
     requestNotifyAgreement(onDone);
 
     callbacks().onEvent({ type });
 
-    expect(onDone).toHaveBeenCalledWith(true);
+    expect(onDone).toHaveBeenCalledWith(type);
   });
 
   it('거절이면 동의 안 된 것으로 알린다 — 그래도 흐름은 끝난다', () => {
@@ -100,7 +106,7 @@ describe('알림 동의 요청 — 결과 전달', () => {
 
     callbacks().onEvent({ type: 'agreementRejected' });
 
-    expect(onDone).toHaveBeenCalledWith(false);
+    expect(onDone).toHaveBeenCalledWith('agreementRejected');
   });
 
   it('오류가 나도 끝난 것으로 알린다 — 부른 화면이 영영 기다리면 안 된다', () => {
@@ -109,7 +115,8 @@ describe('알림 동의 요청 — 결과 전달', () => {
 
     callbacks().onError(new Error('bridge died'));
 
-    expect(onDone).toHaveBeenCalledWith(false);
+    // 거절과 갈라 둔다 — 브릿지가 죽은 것을 「사용자가 안 켰다」로 적으면 거짓말이다.
+    expect(onDone).toHaveBeenCalledWith('unavailable');
   });
 });
 
@@ -136,7 +143,7 @@ describe('알림 동의 요청 — 콜백 해제', () => {
     callbacks().onError(new Error('늦게 온 오류'));
 
     expect(onDone).toHaveBeenCalledTimes(1);
-    expect(onDone).toHaveBeenCalledWith(true);
+    expect(onDone).toHaveBeenCalledWith('newAgreement');
     expect(cleanup).toHaveBeenCalledTimes(1);
   });
 
@@ -151,7 +158,7 @@ describe('알림 동의 요청 — 콜백 해제', () => {
 
     requestNotifyAgreement(onDone);
 
-    expect(onDone).toHaveBeenCalledWith(true);
+    expect(onDone).toHaveBeenCalledWith('newAgreement');
     expect(cleanup).toHaveBeenCalledTimes(1);
   });
 });

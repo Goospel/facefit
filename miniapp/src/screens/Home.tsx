@@ -1,7 +1,7 @@
 import { useState } from 'react';
 
 import { isActive, sortProducts } from '../logic/products';
-import { isNotifySupported, requestNotifyAgreement } from '../notify';
+import { isNotifySupported, requestNotifyAgreement, type NotifyResult } from '../notify';
 import type { Notes, Product } from '../storage';
 import { ui } from '../ui';
 import { LOCAL_ONLY, useObjectUrl, usePhotos } from './usePhotos';
@@ -14,6 +14,30 @@ import { LOCAL_ONLY, useObjectUrl, usePhotos } from './usePhotos';
  */
 
 const VERDICT_KO: Record<string, string> = { better: '좋아졌어요', same: '그대로예요', worse: '나빠졌어요' };
+
+/**
+ * 알림 행이 할 말. **누른 결과를 글자로 되돌려주는 자리다.**
+ *
+ * ⚠️ 실기기에서 「받기」를 눌렀는데 화면이 안 변해 **켜진 건지 아닌지 알 수 없다**는 보고를
+ * 받았다(2026-09-01 · T-010의 두 번째 결함 재발). 원인은 두 겹이었다: 결과 표시가 오른쪽
+ * 작은 회색 글씨뿐이었고, 게다가 래퍼가 `alreadyAgreed`를 boolean으로 뭉개 **이미 켠
+ * 사람에게 해 줄 말 자체가 없었다.**
+ *
+ * 렌더 시점의 상태는 여전히 모른다(SDK에 조회 API가 없다 — `notify.ts`). 하지만 **누르는
+ * 순간의 진실**은 토스가 준다. 그 순간을 그대로 옮긴다.
+ */
+const NOTIFY_TEXT: Record<NotifyResult, { sub: string; right: string; tone: 'on' | 'off' | 'warn' }> = {
+  newAgreement: { sub: '알림을 켰어요 · 내일 아침 8시부터 알려드려요', right: '켜짐', tone: 'on' },
+  // 이 줄이 「켜진 건지 모르겠다」에 답하는 유일한 줄이다.
+  alreadyAgreed: { sub: '이미 켜져 있어요 · 매일 아침 8시에 알려드려요', right: '켜짐', tone: 'on' },
+  agreementRejected: { sub: '알림을 켜지 않았어요 · 눌러서 언제든 켤 수 있어요', right: '받기', tone: 'off' },
+  // 못 물어본 것을 「안 켰다」로 적으면 거짓말이고, 사용자는 자기가 거절한 줄 안다.
+  unavailable: { sub: '지금은 알림 화면을 열 수 없어요 · 잠시 뒤 다시 눌러 주세요', right: '받기', tone: 'warn' },
+};
+
+const NOTIFY_IDLE = { sub: '매일 아침 8시에 찍을 시간을 알려드려요', right: '받기', tone: 'off' } as const;
+
+const TONE_COLOR = { on: 'var(--blue)', off: 'var(--text-sub)', warn: 'var(--amber)' } as const;
 
 export function Home({
   products,
@@ -29,12 +53,15 @@ export function Home({
 }) {
   const { photos } = usePhotos();
   /**
-   * 방금 이 화면에서 신청했는가. **이 세션 안에서만 산다**(설계 §3-2의 의도된 절단).
+   * 방금 누른 결과. **이 세션 안에서만 산다**(설계 §3-2의 의도된 절단).
    *
    * 동의 여부의 단일 출처는 토스다 — 저장해 두면 사용자가 토스 설정에서 철회한 순간
-   * 「신청됨」이 거짓말이 되고, 재동의할 버튼마저 사라진다.
+   * 「켜짐」이 거짓말이 되고, 재동의할 버튼마저 사라진다. `null`은 「아직 안 눌러 봤다」이지
+   * 「꺼졌다」가 **아니다** — 그래서 그때는 상태를 말하지 않고 무엇을 해 주는지만 말한다.
    */
-  const [notifyAsked, setNotifyAsked] = useState(false);
+  const [notifyResult, setNotifyResult] = useState<NotifyResult | null>(null);
+  const notify = notifyResult ? NOTIFY_TEXT[notifyResult] : NOTIFY_IDLE;
+  const on = notify.tone === 'on';
   const todayPhoto = photos.find((p) => p.date === date);
   const todayUrl = useObjectUrl(todayPhoto?.blob);
   const verdict = notes[date];
@@ -110,22 +137,31 @@ export function Home({
               (설계 §3-5) — 상태를 그리면 동의한 사람에게도 앱을 열 때마다 「꺼짐」으로 보인다.
               백업 스위치와 모양은 같은 가족이되 오른쪽이 상태가 아니라 **행동**인 이유다.
 
-              접근성 이름은 행동 하나로 고정한다 — 본문을 이어 붙이면 스크린리더가 설명까지
+              접근성 이름은 한 마디로 고정한다 — 본문을 이어 붙이면 스크린리더가 설명까지
               버튼 이름으로 읽는다.
             */
-            aria-label={notifyAsked ? '알림 신청됨' : '아침 알림 받기'}
+            aria-label={on ? '아침 알림 켜짐' : '아침 알림 받기'}
             style={{ ...ui.card, display: 'flex', alignItems: 'center', gap: 12, width: '100%', textAlign: 'left' }}
-            onClick={() => requestNotifyAgreement((agreed) => agreed && setNotifyAsked(true))}
+            onClick={() => requestNotifyAgreement(setNotifyResult)}
           >
             <span style={{ flex: 1 }}>
               <span style={{ display: 'block', fontSize: 15, fontWeight: 600, color: 'var(--text)' }}>아침 알림</span>
-              <span data-testid="notify-sub" style={{ display: 'block', fontSize: 13, marginTop: 2, color: 'var(--text-sub)' }}>
-                {notifyAsked ? '토스 알림 설정에서 언제든 끌 수 있어요' : '매일 아침 8시에 찍을 시간을 알려드려요'}
+              <span
+                data-testid="notify-sub"
+                style={{ display: 'block', fontSize: 13, marginTop: 2, fontWeight: notifyResult ? 600 : 400, color: TONE_COLOR[notify.tone] }}
+              >
+                {notify.sub}
               </span>
+              {/* 끄는 곳이 앱 밖이라는 것 — 안 말하면 앱에서 끄는 법을 찾다 못 찾는다(앱에 없다). */}
+              {on && (
+                <span style={{ display: 'block', fontSize: 12, marginTop: 4, color: 'var(--text-sub)' }}>
+                  토스 알림 설정에서 언제든 끌 수 있어요
+                </span>
+              )}
             </span>
-            {/* 눌러서 여는 것임을 오른쪽이 말한다 — 신청 뒤에도 멱등이라 자리를 지킨다. */}
-            <span aria-hidden style={{ fontSize: 14, fontWeight: 600, color: notifyAsked ? 'var(--text-weak)' : 'var(--blue)' }}>
-              {notifyAsked ? '신청됨' : '받기'}
+            {/* 눌러서 여는 것임을 오른쪽이 말한다 — 켜진 뒤에도 멱등이라 자리를 지킨다. */}
+            <span aria-hidden style={{ fontSize: 14, fontWeight: 600, color: 'var(--blue)' }}>
+              {notify.right}
             </span>
           </button>
         </>
