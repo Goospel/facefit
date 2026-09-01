@@ -633,7 +633,15 @@ describe('촬영 화면 — 3초 타이머', () => {
     expect(screen.getByText('1')).toBeTruthy();
     expect(capture).not.toHaveBeenCalled();
 
-    await advance(1600);
+    /*
+      ⚠️ 예산을 넉넉히 준다(필요한 가짜 시간은 1000 + FLASH_MS = 1500이다).
+
+      셔터까지가 **상태 → effect → 상태 → effect → 타이머** 사슬이라, 카운트가 0에 닿은
+      뒤 플래시 타이머가 **등록되기까지** 렌더·effect가 두 번 돈다. 각 단계가 `advance`의
+      플러시를 한 박자씩 먹으므로 등록 시점이 밀릴 수 있고, 1600으로 재면 밀린 만큼
+      셔터가 예산 밖으로 나가 **간헐적으로만** 실패한다(로컬 5회 중 1회 · T-011).
+    */
+    await advance(2400);
     vi.useRealTimers();
 
     expect(capture).toHaveBeenCalledTimes(1);
