@@ -121,7 +121,11 @@ facefit까지 합치면 물리 메모리를 ~200MB 넘겨 swap으로 밀린다. 
   - 실측 정정: 설계 §4-1의 의존성 이름은 **Boot 3 이름**이었다. BookTimer(Boot 4.1.0)에 맞춰 `spring-boot-starter-webmvc`·`spring-boot-flyway`로 고쳤다 — 두 서버가 같은 조합이어야 운영자가 하나만 기억한다.
   - Flyway V1이 **H2 MySQL 모드에서 그대로 적용**돼 Testcontainers 승격은 아직 불필요. ⚠️ 단 H2는 `MEDIUMTEXT`↔`TEXT` 회귀를 못 잡는다(둘 다 CLOB) — 태스크 2의 512KB 경계에서 재판단.
   - CI는 **경로 필터 없이** 단일 워크플로다 — 필터를 두면 문서-only PR에서 job이 스킵돼 required check가 pending으로 남고 PR을 못 머지한다(BookTimer가 같은 자리에서 배운 것).
-- [ ] 🔜 **2. backup API** — PUT/GET/DELETE. TDD Red: 왕복 · 404 · DELETE · 512KB 초과 400 · 최상위 키 밖 400 · **2,000자 문자열 400(사진 밀반입 차단 — 불변식)** · products 미지 필드 왕복 보존 · 키 없음 401 · 레이트리밋 429
+- [x] ✅ **2. backup API** — PUT/GET/DELETE. TDD Red(38개 중 23개 실패) → Green(38개 통과 · 스킵 0).
+  - 걸린 경계: 왕복 · 404 · DELETE 멱등 · LWW · **2,000자 문자열 400(값뿐 아니라 객체 키까지)** · 512KB 초과 400 · 최상위 키 밖 400 · products 200 · notes 4,000 · 미지 필드 왕복 보존 · 키 없음/짧음/긺 401 · **원 키 비저장(DB에 sha256만)** · 키당·IP당 429 · `/health`는 레이트리밋 밖
+  - 실측 정정: Boot 4의 `-webmvc`가 **Jackson을 안 끌고 오고**, 딸려 오는 것은 **Jackson 3**(`tools.jackson.*`)라 메서드 이름이 다르다(`isTextual`→`isString` 등). 설계 §4-1에 반영.
+  - 저장은 **원본 바이트 그대로** 한다 — 파싱한 트리를 다시 직렬화하면 공백·키 순서가 바뀌어 「있는 그대로 보존」이 깨진다. 본문도 `String`이 아니라 `byte[]`로 받는다(512KB를 실제 바이트로 재고, 문자셋을 컨버터 기본값에 안 맡긴다).
+  - ⚠️ **H2가 못 잡는 것 하나**: `MEDIUMTEXT`↔`TEXT` 회귀(둘 다 CLOB). Testcontainers를 들이는 대신 **태스크 3-h 스모크에 64KB 넘는 페이로드 왕복을 넣어** 실제 MySQL에서 확인한다.
 - [ ] ⬜ **3. 동거 배선 + 배포 + 스모크** (설계 §6 태스크 3-a~3-h)
   - [ ] 3-a 선행 확인 3가지 — `backup-mysql.sh` 확장 가능 여부 · 도커 네트워크 실명 · 기존 배포 패턴
   - [ ] 3-b 콘솔 3개 — A 레코드(TTL 60) · SSM `/facefit/db-password` · ECR + OIDC
@@ -130,7 +134,7 @@ facefit까지 합치면 물리 메모리를 ~200MB 넘겨 swap으로 밀린다. 
   - [ ] 3-e **BookTimer 레포 별도 PR** — Caddy 블록 + 동거 문서 + `CLAUDE.md` 포인터
   - [ ] 3-f 배포 워크플로 — 테스트 → 이미지 → ECR → SSM
   - [ ] 3-g DB 백업 + **복구 리허설 1회**(리허설 없는 백업은 미완으로 친다)
-  - [ ] 3-h 실통신 스모크 + **메모리 실측**(BookTimer 배포를 겹쳐 돌린 직후 `free -m`)
+  - [ ] 3-h 실통신 스모크(**64KB 넘는 페이로드 왕복 포함** — H2가 못 잡는 `MEDIUMTEXT` 회귀를 여기서 실제 MySQL로 확인) + **메모리 실측**(BookTimer 배포를 겹쳐 돌린 직후 `free -m`)
 - [ ] ⬜ **4. 클라 `logic/backup.ts` + storage 확장** — SDK 래퍼(던짐 → null) · 실패 무음 · 플래그 게터/세터 (TDD)
 - [ ] ⬜ **5. 클라 UX 배선** — 첫 등록 후 1회 옵트인 제안 · Home 상시 버튼 · 5초 디바운스 업로드 · dirty 재시도 · 온보딩 복원 링크 → 미리보기(**「사진은 복원되지 않아요」 고정 표기**)
 - [ ] ⬜ **6. 문구 갱신 + 릴리스 + 실기기 검증** → plan/changeLog sweep
