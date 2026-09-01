@@ -216,28 +216,35 @@ describe('복원 진입 — 온보딩 하단', () => {
   });
 });
 
-describe('백업 버튼 — Home 상시', () => {
+describe('백업 스위치 — 제품 탭 상시', () => {
   beforeEach(() => {
     localStorage.setItem('facefit.onboarded', '1');
   });
 
-  it('꺼져 있으면 켜는 버튼이다', () => {
+  /** 제품 탭으로. 백업이 지키는 것이 제품·관찰이고, 1회 제안도 이 탭에서 뜬다. */
+  function goProducts() {
+    fireEvent.click(screen.getByRole('button', { name: '제품' }));
+  }
+
+  it('오늘 탭에는 없다 — 「오늘 찍었나」에 답하는 화면에 설정이 섞이지 않는다', () => {
     render(<App />);
-    expect(screen.getByRole('button', { name: '기록 백업 켜기' })).toBeTruthy();
+
+    expect(screen.queryByRole('switch')).toBeNull();
   });
 
   /*
-    ⚠️ 실기기에서 사용자가 「기록 백업 켜기」를 보고 **이미 켜진 줄** 알았다(2026-09-01).
-    버튼에 **행동만** 적혀 있어서 상태로 읽힌 것이다 — 켜짐/꺼짐을 글자로 따로 말하지 않으면
-    토글 라벨은 어느 쪽으로도 읽힌다. 그래서 상태 줄을 버튼과 **갈라** 놓는다.
+    ⚠️ 처음엔 버튼 라벨 하나(「기록 백업 켜기」)로 뒀다가, 실기기에서 사용자가 그것을 보고
+    **이미 켜진 줄** 알았다(2026-09-01 · T-010). 라벨에 **행동만** 적으면 상태로 읽힌다 —
+    어느 쪽으로 읽어도 말이 되기 때문이다.
 
-    같은 줄이 두 번째 구멍도 막는다: 켜기를 눌렀을 때 성공했는지 화면에 아무 표시가 없었다.
-    백그라운드 업로드가 조용한 건 의도지만, **사용자가 명시적으로 누른 행동**까지 조용하면
-    그건 무음 폴백이 아니라 그냥 깜깜한 것이다.
+    스위치에는 행동 문구 자체가 없어 그 모호함이 사라진다. 상태는 `aria-checked`와 손잡이
+    위치가 말하고, 아래 줄은 상태를 되풀이하는 대신 **왜 켜는지**를 말한다.
   */
-  it('꺼져 있다는 것을 **글자로** 말한다 — 버튼 라벨만으로는 상태로 읽힌다', () => {
+  it('꺼져 있으면 꺼진 스위치다', () => {
     render(<App />);
-    expect(screen.getByTestId('backup-state').textContent).toContain('꺼져 있어요');
+    goProducts();
+
+    expect(screen.getByRole('switch').getAttribute('aria-checked')).toBe('false');
   });
 
   it('켜져 있고 백업한 적이 있으면 마지막 시각을 말한다 — 「지금 지켜지고 있나」의 답이다', () => {
@@ -245,27 +252,32 @@ describe('백업 버튼 — Home 상시', () => {
     localStorage.setItem('facefit.lastBackupAt', '2026-09-01T12:25:30.553Z');
 
     render(<App />);
+    goProducts();
 
-    const state = screen.getByTestId('backup-state').textContent ?? '';
-    expect(state).toContain('켜짐');
-    expect(state).toContain('9월 1일 21:25');
+    expect(screen.getByRole('switch').getAttribute('aria-checked')).toBe('true');
+    expect(screen.getByTestId('backup-state').textContent).toContain('9월 1일 21:25');
   });
 
   it('켜져 있는데 아직 못 올렸으면 그렇다고 말한다 — 켜 놓고 안 되는 상태가 제일 위험하다', () => {
     localStorage.setItem('facefit.backupEnabled', '1');
 
     render(<App />);
+    goProducts();
 
-    expect(screen.getByTestId('backup-state').textContent).toContain('아직 백업하지 못했어요');
+    const state = screen.getByTestId('backup-state');
+    expect(state.textContent).toContain('아직 백업하지 못했어요');
+    // 회색으로 두면 정상 상태처럼 읽힌다 — 지켜진다고 믿는데 아무것도 안 올라간 상태다.
+    expect(state.getAttribute('style')).toContain('--amber');
   });
 
-  it('켜면 켜짐이 남고 문구가 바뀐다', async () => {
+  it('켜면 켜짐이 남고 스위치가 켜진다', async () => {
     render(<App />);
+    goProducts();
 
-    fireEvent.click(screen.getByRole('button', { name: '기록 백업 켜기' }));
+    fireEvent.click(screen.getByRole('switch'));
 
     expect(isBackupEnabled(localStorage)).toBe(true);
-    expect(screen.getByRole('button', { name: '기록 백업 끄기' })).toBeTruthy();
+    expect(screen.getByRole('switch').getAttribute('aria-checked')).toBe('true');
     await vi.waitFor(() => expect(uploadBackup).toHaveBeenCalled());
   });
 
@@ -273,17 +285,19 @@ describe('백업 버튼 — Home 상시', () => {
     localStorage.setItem('facefit.backupEnabled', '1');
 
     render(<App />);
-    fireEvent.click(screen.getByRole('button', { name: '기록 백업 끄기' }));
+    goProducts();
+    fireEvent.click(screen.getByRole('switch'));
 
     expect(isBackupEnabled(localStorage)).toBe(false);
     await vi.waitFor(() => expect(deleteBackup).toHaveBeenCalledWith(KEY));
   });
 
-  it('쓸 수 없는 기기에서는 버튼이 없다', () => {
+  it('쓸 수 없는 기기에서는 스위치가 없다', () => {
     vi.mocked(isBackupSupported).mockReturnValue(false);
 
     render(<App />);
+    goProducts();
 
-    expect(screen.queryByRole('button', { name: '기록 백업 켜기' })).toBeNull();
+    expect(screen.queryByRole('switch')).toBeNull();
   });
 });
