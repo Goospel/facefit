@@ -27,7 +27,11 @@ class CorsConfig implements WebMvcConfigurer {
 	@Override
 	public void addCorsMappings(CorsRegistry registry) {
 		registry.addMapping("/**")
-				.allowedOrigins(origins.toArray(String[]::new))
+				// ⚠️ `allowedOrigins`가 아니라 **패턴**이다. 정확한 오리진 이름을 맞히려다
+				// 실기기에서 틀렸고(설계는 `private-web`, 실제는 `private-apps`), 그 결과가
+				// 「모든 프리플라이트 403 + 앱에서는 무음」이었다(T-009). 이름 하나에 매달리는
+				// 대신 **우리 앱 이름으로 시작하는 tossmini.com 하위 도메인**을 허용한다.
+				.allowedOriginPatterns(origins.toArray(String[]::new))
 				.allowedMethods("GET", "POST", "PUT", "DELETE")
 				// 익명 키는 헤더로 온다(설계 §4-2). 쿠키를 안 쓰므로 allowCredentials는 켜지 않는다 —
 				// 켜는 순간 오리진 실수의 대가가 「데이터가 안 옴」에서 「남의 세션이 실림」으로 커진다.

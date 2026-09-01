@@ -506,10 +506,14 @@ v2-2 §3-5의 「낡는 문장을 능동적으로 고친다」 관례 계승:
   돌고 있어 여기서 어긋나면 `updated_at` 비교가 조용히 밀린다. JVM도 `-Duser.timezone=UTC`,
   커넥션 URL에 `connectionTimeZone=UTC`. 사용자에게 보이는 날짜는 전부 클라가 만든
   문자열(`clientSavedAt`·`todayKey`)이라 서버 시각은 **운영용 축**일 뿐이다.
-- CORS 허용 오리진 2개(불변 — 서버 도메인이 바뀌어도 그대로):
-  `https://facefit.web.tossmini.com`(실서비스) ·
-  `https://facefit.private-web.tossmini.com`(콘솔 QR).
+- CORS 허용 오리진 — **정확한 이름이 아니라 패턴으로 잡는다**(2026-09-01 실기기 실측 정정):
+  `https://facefit.tossmini.com` · `https://facefit.*.tossmini.com`.
   `http://localhost:5320`은 dev 프로파일에서만 추가.
+  ⚠️ 초안은 `facefit.web` / `facefit.private-web` 두 개를 적었는데, **실제 테스트 번들의
+  오리진은 `facefit.private-apps.tossmini.com`이었다**(`web` ↔ `apps`). 그 한 글자로 모든
+  프리플라이트가 403이 됐고, 클라가 무음 폴백이라 **앱에서는 아무 일도 안 일어난 것처럼
+  보였다**(T-009). 틀리면 무음으로 죽는 값을 「맞히기」로 두지 않는다 — 우리 앱 이름으로
+  시작하는 tossmini.com 하위 도메인을 허용하고, 다른 미니앱(`booktimer.*`)은 계속 막는다.
 
 ### 4-2. API · 스키마
 
