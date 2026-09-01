@@ -4,6 +4,14 @@
 > 앞으로 할 일은 [`plan.md`](plan.md), 함정은 [`claude-docs/troubleshooting.md`](claude-docs/troubleshooting.md).
 > PR 번호는 적지 않는다 — 미래에 확정되는 값이라 stale이 조용히 쌓인다. 찾으려면 제목으로 `git log --grep`.
 
+## 2026-09-02 · iOS 날짜 입력란이 카드 밖으로 넘치던 것을 고쳤다
+
+실기기 스크린샷에서 제품 등록 폼의 **시작일 칸이 카드 오른쪽 경계를 넘어가고 값이 가운데
+정렬로** 떴다. 원인은 iOS Safari의 date input이 **자체 고유 너비를 써서 `width:100%`를 무시**하고,
+값을 shadow 요소(`::-webkit-date-and-time-value`)로 그려 **인라인 `textAlign`이 안 먹기** 때문이다.
+전역 CSS 두 규칙으로 잡았고, 같은 코드를 쓰는 **수정 폼의 종료일 칸도 함께** 해결된다.
+jsdom은 이 렌더링을 재현하지 못하므로 **실기기 확인은 다음 번들에서** 한다.
+
 ## 2026-09-02 · v3-1 라이브 출시 (`20260901-12`)
 
 검수 승인 → 사용자가 콘솔 웹 「출시하기」 → **라이브**(08:18 · `deployed: true` 실측).
