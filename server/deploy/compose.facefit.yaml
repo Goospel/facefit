@@ -1,0 +1,36 @@
+# facefit API 서버 — BookTimer EC2에 **동거**한다(설계 §3-6).
+#
+# ⚠️ 이건 BookTimer 스택(`/opt/booktimer/compose.prod.yaml`)과 **별개 compose 프로젝트**다.
+#    그래서 facefit 배포가 BookTimer 레포를 건드리지도, BookTimer 스택을 재시작하지도 않는다.
+#    분리할 때(설계 §3-6-1) 이 파일을 새 박스로 복사하는 것이 이관의 대부분이다.
+#
+# 이 레포가 BookTimer 쪽에 남기는 흔적은 Caddyfile의 사이트 블록 하나뿐이다.
+# 그쪽 세션을 위한 안내는 BookTimer 레포 `claude-docs/facefit-tenant.md`.
+
+services:
+  facefit-api:
+    image: ${FACEFIT_IMAGE}
+    # 이름을 고정한다 — 장애 때 `docker stop facefit-api` 한 줄로 facefit만 끌 수 있어야 하고
+    # (BookTimer는 안 죽는다), Caddy가 이 이름으로 찾는다.
+    container_name: facefit-api
+    restart: unless-stopped
+    env_file:
+      - .env                 # deploy-on-ec2.sh가 SSM Parameter Store에서 만든다(디스크에 영구 보관 X)
+    environment:
+      # 수치는 설계 §3-6의 메모리 예산 그대로다. **BookTimer가 blue/green 배포로 app을 2개
+      # 띄우는 수십 초 동안 물리 메모리를 넘기므로**, facefit 몫을 작게 유지하는 것이 유일한 통제다.
+      # 작은 힙에서는 SerialGC가 G1보다 메모리를 덜 쓴다. UTC는 MySQL 컨테이너와 축을 맞춘다.
+      JAVA_TOOL_OPTIONS: "-Xmx160m -XX:MaxMetaspaceSize=96m -XX:+UseSerialGC -Duser.timezone=UTC"
+    # 상한의 목적은 총량 예약이 아니라 **격리**다 — facefit이 새면 facefit만 죽고 BookTimer는 산다.
+    # 상한이 없으면 호스트 OOM 킬러가 둘 중 아무나 고른다.
+    mem_limit: 320m
+    # ⚠️ ports를 **일부러 두지 않는다.** 8080이 호스트에 뜨면 Caddy를 우회하는 평문 입구가 생긴다.
+    networks:
+      - booktimer
+
+networks:
+  booktimer:
+    # BookTimer 스택이 이미 만들어 둔 네트워크에 얹힌다(실측: `booktimer_default`).
+    # 여기 붙어야 Caddy가 `facefit-api:8080`을, 이 앱이 `mysql:3306`을 이름으로 찾는다.
+    name: booktimer_default
+    external: true

@@ -127,12 +127,12 @@ facefit까지 합치면 물리 메모리를 ~200MB 넘겨 swap으로 밀린다. 
   - 저장은 **원본 바이트 그대로** 한다 — 파싱한 트리를 다시 직렬화하면 공백·키 순서가 바뀌어 「있는 그대로 보존」이 깨진다. 본문도 `String`이 아니라 `byte[]`로 받는다(512KB를 실제 바이트로 재고, 문자셋을 컨버터 기본값에 안 맡긴다).
   - ⚠️ **H2가 못 잡는 것 하나**: `MEDIUMTEXT`↔`TEXT` 회귀(둘 다 CLOB). Testcontainers를 들이는 대신 **태스크 3-h 스모크에 64KB 넘는 페이로드 왕복을 넣어** 실제 MySQL에서 확인한다.
 - [ ] ⬜ **3. 동거 배선 + 배포 + 스모크** (설계 §6 태스크 3-a~3-h)
-  - [ ] 3-a 선행 확인 3가지 — `backup-mysql.sh` 확장 가능 여부 · 도커 네트워크 실명 · 기존 배포 패턴
-  - [ ] 3-b 콘솔 3개 — A 레코드(TTL 60) · SSM `/facefit/db-password` · ECR + OIDC
-  - [ ] 3-c MySQL `facefit` DB + 전용 사용자
-  - [ ] 3-d `server/deploy/compose.facefit.yaml` — **호스트 포트 노출 금지**가 검증 항목
-  - [ ] 3-e **BookTimer 레포 별도 PR** — Caddy 블록 + 동거 문서 + `CLAUDE.md` 포인터
-  - [ ] 3-f 배포 워크플로 — 테스트 → 이미지 → ECR → SSM
+  - [x] ✅ 3-a 선행 확인 3가지 — 도커 네트워크 **`booktimer_default`** · 배포 자산 `/opt/booktimer/` · `render-env.sh`의 SSM↔환경변수 매핑. `backup-mysql.sh`는 `booktimer` 하드코딩이라 **`--databases booktimer facefit`으로 한 단어만 덧붙인다**(백업 경로를 둘로 늘리지 않는다 — T-138에서 이미 치른 값)
+  - [x] ✅ 3-b AWS 선행 — A 레코드(INSYNC·공개 DNS 확인) · SSM `/facefit/SPRING_DATASOURCE_{URL,USERNAME,PASSWORD}`(설계의 `db-password` 대신 **BookTimer 관례에 맞춤** — 이름이 곧 환경변수라 매핑 표가 불필요) · ECR `facefit` · **`facefitDeployRole` 신설**(기존 역할에 얹지 않았다 — 그러면 facefit CI가 BookTimer 배포 권한을 통째로 갖는다) · GitHub 시크릿 4개
+  - [ ] ⬜ 3-c MySQL `facefit` DB + 전용 사용자 (**3-e 머지 뒤**)
+  - [x] ✅ 3-d `server/deploy/compose.facefit.yaml` + `Dockerfile` + `deploy-on-ec2.sh` — `mem_limit 320m` · `-Xmx160m` · external 네트워크 · **ports 없음**
+  - [ ] 🔜 3-e **BookTimer 레포 별도 PR** — Caddy 블록 + `backup-mysql.sh` 한 단어 + 동거 문서 상태 갱신. ⚠️ **이게 먼저 배포돼야** facefit 배포의 헬스체크가 통과한다(Caddy가 그 호스트를 모르면 502)
+  - [x] ✅ 3-f 배포 워크플로 작성 — 테스트 → ECR → S3(`deploy-facefit/`) → SSM → **라이브 헬스체크**. blue/green 없음(메모리 — 설계 §5). 실동작 검증은 머지 시
   - [ ] 3-g DB 백업 + **복구 리허설 1회**(리허설 없는 백업은 미완으로 친다)
   - [ ] 3-h 실통신 스모크(**64KB 넘는 페이로드 왕복 포함** — H2가 못 잡는 `MEDIUMTEXT` 회귀를 여기서 실제 MySQL로 확인) + **메모리 실측**(BookTimer 배포를 겹쳐 돌린 직후 `free -m`)
 - [ ] ⬜ **4. 클라 `logic/backup.ts` + storage 확장** — SDK 래퍼(던짐 → null) · 실패 무음 · 플래그 게터/세터 (TDD)
