@@ -78,6 +78,44 @@ class RateLimitTest {
 	}
 
 	@Test
+	@DisplayName("X-Forwarded-For가 다르면 다른 버킷 — 안 그러면 Caddy 뒤에서 IP 상한이 전역 상한이 된다")
+	void ipLimit_separatesByForwardedFor() throws Exception {
+		// 리버스 프록시 뒤에서는 모든 요청의 getRemoteAddr()가 **프록시 컨테이너 IP**다.
+		// 그대로 세면 상한이 사용자별이 아니라 전체 합계가 되어, 한 사람이 몫을 다 태우면
+		// 나머지 전원이 429를 받는다 — 그리고 앱은 무음 폴백이라 아무도 이유를 모른다.
+		for (int i = 0; i < 4; i++) {
+			mockMvc.perform(get("/v1/backup")
+							.header("X-Anon-Key", "test-xff-a").header("X-Forwarded-For", "1.2.3.4"))
+					.andExpect(status().isNotFound());
+		}
+
+		// 다른 클라이언트는 영향을 안 받는다.
+		mockMvc.perform(get("/v1/backup")
+						.header("X-Anon-Key", "test-xff-b").header("X-Forwarded-For", "5.6.7.8"))
+				.andExpect(status().isNotFound());
+
+		// 같은 클라이언트는 막힌다.
+		mockMvc.perform(get("/v1/backup")
+						.header("X-Anon-Key", "test-xff-a").header("X-Forwarded-For", "1.2.3.4"))
+				.andExpect(status().isTooManyRequests());
+	}
+
+	@Test
+	@DisplayName("X-Forwarded-For에 여러 홉이 실리면 맨 앞(원 클라이언트)을 쓴다")
+	void ipLimit_usesFirstHopOfForwardedFor() throws Exception {
+		for (int i = 0; i < 4; i++) {
+			mockMvc.perform(get("/v1/backup")
+							.header("X-Anon-Key", "test-xff-hop").header("X-Forwarded-For", "9.9.9.9, 10.0.0.1"))
+					.andExpect(status().isNotFound());
+		}
+
+		// 뒤 홉만 다른 요청은 **같은 클라이언트**다 — 맨 앞을 안 보면 상한을 우회할 수 있다.
+		mockMvc.perform(get("/v1/backup")
+						.header("X-Anon-Key", "test-xff-hop").header("X-Forwarded-For", "9.9.9.9, 10.0.0.2"))
+				.andExpect(status().isTooManyRequests());
+	}
+
+	@Test
 	@DisplayName("/health는 레이트리밋 밖이다 — 감시가 자기 때문에 빨간불이 되면 안 된다")
 	void health_isNotRateLimited() throws Exception {
 		for (int i = 0; i < 10; i++) {

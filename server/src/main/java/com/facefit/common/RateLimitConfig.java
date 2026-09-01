@@ -33,11 +33,32 @@ class RateLimitConfig implements WebMvcConfigurer {
 		registry.addInterceptor(new HandlerInterceptor() {
 			@Override
 			public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) {
-				if (!rateLimiter.allow("ip:" + request.getRemoteAddr(), ipPerMinute)) {
+				if (!rateLimiter.allow("ip:" + clientIp(request), ipPerMinute)) {
 					throw new TooManyRequestsException();
 				}
 				return true;
 			}
 		}).addPathPatterns("/v1/**");
+	}
+
+	/**
+	 * 이 서버는 Caddy 뒤에 있다. 그래서 {@code getRemoteAddr()}는 <b>언제나 Caddy 컨테이너의
+	 * IP</b>이고, 그걸로 세면 「IP당 상한」이 사실은 <b>전체 합계 상한</b>이 된다 — 한 사람이
+	 * 몫을 다 태우면 나머지 전원이 429를 받고, 앱은 무음 폴백이라 아무도 이유를 모른다.
+	 *
+	 * <p>그래서 {@code X-Forwarded-For}의 <b>맨 앞</b>(원 클라이언트)을 쓴다. 이 헤더를 믿을 수
+	 * 있는 이유는 <b>Caddy가 클라이언트가 심어 보낸 값을 리셋하고 자기가 다시 넣기</b> 때문이다
+	 * (BookTimer가 같은 자리에서 확인한 성질 — 그 레포 Caddyfile 주석).
+	 * ⚠️ 프록시 없이 이 서버를 직접 노출하는 순간 이 가정이 깨진다 — 그래서 compose에
+	 * {@code ports}가 없고, Caddy를 우회하는 입구를 만들지 않는 것이 이 코드의 전제다.
+	 */
+	private static String clientIp(HttpServletRequest request) {
+		String forwarded = request.getHeader("X-Forwarded-For");
+		if (forwarded == null || forwarded.isBlank()) {
+			return request.getRemoteAddr();
+		}
+		int comma = forwarded.indexOf(',');
+		String first = (comma >= 0 ? forwarded.substring(0, comma) : forwarded).trim();
+		return first.isEmpty() ? request.getRemoteAddr() : first;
 	}
 }
