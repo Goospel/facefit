@@ -226,6 +226,39 @@ describe('백업 버튼 — Home 상시', () => {
     expect(screen.getByRole('button', { name: '기록 백업 켜기' })).toBeTruthy();
   });
 
+  /*
+    ⚠️ 실기기에서 사용자가 「기록 백업 켜기」를 보고 **이미 켜진 줄** 알았다(2026-09-01).
+    버튼에 **행동만** 적혀 있어서 상태로 읽힌 것이다 — 켜짐/꺼짐을 글자로 따로 말하지 않으면
+    토글 라벨은 어느 쪽으로도 읽힌다. 그래서 상태 줄을 버튼과 **갈라** 놓는다.
+
+    같은 줄이 두 번째 구멍도 막는다: 켜기를 눌렀을 때 성공했는지 화면에 아무 표시가 없었다.
+    백그라운드 업로드가 조용한 건 의도지만, **사용자가 명시적으로 누른 행동**까지 조용하면
+    그건 무음 폴백이 아니라 그냥 깜깜한 것이다.
+  */
+  it('꺼져 있다는 것을 **글자로** 말한다 — 버튼 라벨만으로는 상태로 읽힌다', () => {
+    render(<App />);
+    expect(screen.getByTestId('backup-state').textContent).toContain('꺼져 있어요');
+  });
+
+  it('켜져 있고 백업한 적이 있으면 마지막 시각을 말한다 — 「지금 지켜지고 있나」의 답이다', () => {
+    localStorage.setItem('facefit.backupEnabled', '1');
+    localStorage.setItem('facefit.lastBackupAt', '2026-09-01T12:25:30.553Z');
+
+    render(<App />);
+
+    const state = screen.getByTestId('backup-state').textContent ?? '';
+    expect(state).toContain('켜짐');
+    expect(state).toContain('9월 1일 21:25');
+  });
+
+  it('켜져 있는데 아직 못 올렸으면 그렇다고 말한다 — 켜 놓고 안 되는 상태가 제일 위험하다', () => {
+    localStorage.setItem('facefit.backupEnabled', '1');
+
+    render(<App />);
+
+    expect(screen.getByTestId('backup-state').textContent).toContain('아직 백업하지 못했어요');
+  });
+
   it('켜면 켜짐이 남고 문구가 바뀐다', async () => {
     render(<App />);
 

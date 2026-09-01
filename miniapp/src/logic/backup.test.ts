@@ -1,6 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { API_BASE, buildBackupBlob, deleteBackup, fetchBackup, getBackupKey, uploadBackup } from './backup';
+import {
+  API_BASE,
+  buildBackupBlob,
+  deleteBackup,
+  fetchBackup,
+  formatBackupTime,
+  getBackupKey,
+  uploadBackup,
+} from './backup';
 import type { Product } from '../storage';
 
 /**
@@ -45,6 +53,22 @@ beforeEach(() => {
   vi.clearAllMocks();
   getAnonymousKey.isSupported.mockReturnValue(true);
   getAnonymousKey.mockResolvedValue({ type: 'HASH', hash: KEY });
+});
+
+describe('formatBackupTime — 「지켜지고 있나」에 답하는 유일한 값', () => {
+  it('ISO 시각을 한국 시간의 사람 표기로 바꾼다', () => {
+    // 2026-09-01T12:25:30Z = 한국 시간 21시 25분.
+    expect(formatBackupTime('2026-09-01T12:25:30.553Z')).toBe('9월 1일 21:25');
+  });
+
+  it('없으면 null이다 — 화면이 빈 시각을 그리지 않게', () => {
+    expect(formatBackupTime(null)).toBeNull();
+    expect(formatBackupTime('')).toBeNull();
+  });
+
+  it('해석할 수 없는 값도 null이다 — 저장소에 뭐가 들었든 화면이 죽지 않는다', () => {
+    expect(formatBackupTime('언젠가')).toBeNull();
+  });
 });
 
 describe('buildBackupBlob — 불변식의 클라이언트 절반', () => {

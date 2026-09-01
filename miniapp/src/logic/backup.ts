@@ -36,6 +36,26 @@ export type BackupBlob = {
   clientSavedAt: string;
 };
 
+/**
+ * 마지막 백업 시각을 사람이 읽는 한 줄로. **「내 기록이 지금 지켜지고 있나」에 답하는
+ * 유일한 값이다** — 백업은 성공해도 화면에 아무것도 안 남는 동작이라, 이 값이 없으면
+ * 사용자는 켜 놓고도 되고 있는지 알 방법이 없다.
+ *
+ * 한국 시간으로 찍는다(`todayKey`와 같은 축). 해석이 안 되면 `null`이고, 화면은 그때
+ * 시각 대신 다른 말을 한다 — 저장소에 뭐가 들었든 여기서 죽지 않는다.
+ */
+export function formatBackupTime(iso: string | null): string | null {
+  if (!iso) return null;
+  const at = new Date(iso);
+  if (Number.isNaN(at.getTime())) return null;
+
+  // `sv-SE`가 `2026-09-01 21:25:30` 꼴을 준다 — `todayKey`가 날짜를 자를 때 쓰는 것과 같은
+  // 관용구다. ko-KR 숫자 포맷은 로케일 구현마다 `9. 1.`처럼 달라서 조립을 직접 한다.
+  const [date, time] = at.toLocaleString('sv-SE', { timeZone: 'Asia/Seoul' }).split(' ');
+  const [, month, day] = date.split('-');
+  return `${Number(month)}월 ${Number(day)}일 ${time.slice(0, 5)}`;
+}
+
 /** 페이로드를 만드는 유일한 자리. 여기 키가 하나 늘면 서버가 400으로 막는다(최상위 화이트리스트). */
 export function buildBackupBlob(products: Product[], notes: Notes, clientSavedAt: string): BackupBlob {
   return { schemaVersion: 1, products, notes, clientSavedAt };
