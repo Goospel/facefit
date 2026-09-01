@@ -45,6 +45,35 @@ describe('온보딩', () => {
     expect(screen.getByText(/카메라는 얼굴 사진을 찍는 데에만/)).toBeTruthy();
   });
 
+  it('백업을 켜면 무엇이 나가는지 말한다 — 서버가 생긴 계단에서 먼저 말한다(v3 §3-8)', () => {
+    /*
+      v3에서 「서버 0」이 끝난다. `LOCAL_ONLY`(사진 문장)는 **글자 하나 안 바뀌고 여전히
+      참이지만**, 그것만 두면 부분적으로 낡은 고지가 된다 — 백업을 켜면 제품·관찰이 나간다.
+      검수자가 번들에서 발견하고 묻기 전에 먼저 말한다(v2-2와 같은 관례).
+    */
+    render(<Onboarding onDone={vi.fn()} />);
+    expect(screen.getByText(/기록 백업을 켜면/)).toBeTruthy();
+    expect(screen.getByText(/얼굴 사진은 올라가지 않아요/)).toBeTruthy();
+  });
+
+  it('**낡은 단정이 남아 있지 않다** — 서버가 생겼는데 「서버도 없어요」가 남으면 거짓말이 된다', () => {
+    /*
+      이 테스트가 잡는 것은 새 문구가 아니라 **안 지운 옛 문구**다. 문구를 더하는 것은
+      기억나지만 지우는 것은 잘 잊는다 — 그리고 남은 옛 문장이 새 문장과 정면으로 모순된다.
+      「나가는 건 검색어뿐이에요」도 백업이 생긴 순간 거짓이다.
+    */
+    const { container } = render(<Onboarding onDone={vi.fn()} />);
+    const text = container.textContent ?? '';
+    for (const stale of ['계정도 서버도 없어요', '나가는 건 검색어뿐']) {
+      expect(text.includes(stale), stale).toBe(false);
+    }
+  });
+
+  it('로그인이 없다는 사실은 그대로 말한다 — 서버가 생긴 것과 계정이 생긴 것은 다르다', () => {
+    render(<Onboarding onDone={vi.fn()} />);
+    expect(screen.getByText(/로그인도 계정도 없어요/)).toBeTruthy();
+  });
+
   it('효과가 있다고 단정하지 않는다 — 관찰을 돕는 앱이지 판정하는 앱이 아니다', () => {
     const { container } = render(<Onboarding onDone={vi.fn()} />);
     const text = container.textContent ?? '';
