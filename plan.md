@@ -86,6 +86,8 @@
 
 ### 🏗️ 인프라 현황 — 「서버 0」의 종료 (2026-09-01 실측·결정)
 
+> **2026-09-01 가동 시작** — `https://facefit-api.booktimer.app` 라이브(health 200).
+
 **facefit 서버는 자기 인스턴스가 없다 — BookTimer의 EC2에 얹혀 산다.**
 이 절은 나중에 「왜 이렇게 돼 있지?」와 「언제·어떻게 떼어내지?」에 답하기 위한 것이다.
 상세는 설계 §2-5(실측) · §3-6(호스팅) · **§3-6-1(분리 경로)**.
@@ -97,7 +99,8 @@
 | 리버스 프록시 | `caddy:2-alpine` — HTTPS 자동(certbot 없음). facefit vhost는 **BookTimer 레포**의 `deploy/caddy/Caddyfile` |
 | DB | `booktimer-mysql-1`(mysql:8.4) **재사용** — `facefit` 데이터베이스 + 전용 사용자(권한은 그 DB에만) |
 | 도메인 | `facefit-api.booktimer.app` → 위 EIP (Route 53 `Z0795663J1W7C48SU27B` · **TTL 60초**) |
-| facefit 자원 몫 | 컨테이너 1개 · `mem_limit 320m` · `-Xmx160m` |
+| facefit 자원 몫 | 컨테이너 1개 · `mem_limit 320m` · `-Xmx160m` — **실사용 149MB**(상한의 46%, 2026-09-01 실측) |
+| 배포 | facefit 레포 GitHub Actions → ECR `facefit` → SSM. **`facefitDeployRole`**(ECR·S3 접두어로 좁힘) |
 | 추가 비용 | **0원** ⚠️ 단 이 계정에 **프리티어가 없다**(8월 $32.80 실결제) — 분리하는 날이 곧 월 ~$15.9가 시작되는 날 |
 
 **⚠️ 분리 신호** — 하나면 판단, 둘이면 분리(절차는 설계 §3-6-1 ③):
@@ -108,9 +111,11 @@ MySQL 슬로우 쿼리 · BookTimer 배포가 서로를 흔듦 · facefit 트래
 ① A 레코드 TTL 60초 ② 전용 MySQL 사용자·DB ③ compose 조각을 facefit 레포에
 ④ DB 접속 정보 환경변수 주입.
 
-**⚠️ 알려진 제약**: BookTimer는 blue/green 배포라 전환 중 app이 2개 뜬다 — 그 수십 초 동안
-facefit까지 합치면 물리 메모리를 ~200MB 넘겨 swap으로 밀린다. 백업이 fire-and-forget이라
-사용자에게 도달하기 전에 흡수되지만, **실측은 태스크 3-h에서 한다**.
+**측정으로 정정된 것(2026-09-01)**: 「BookTimer 배포 창에 물리 메모리를 ~200MB 넘긴다」는
+예측은 **틀렸다.** 근거로 삼았던 1.78GB가 BookTimer compose 주석의 **추정치**였는데, 실측은
+app 388MB · mysql 240MB로 한참 낮다. facefit(149MB)까지 얹고 blue/green으로 app이 하나 더
+떠도 약 **1,389MB / 1,913MB**다. **남의 문서의 추정치를 실측처럼 인용한 것이 오판의 원인**이라
+적어 둔다 — 같은 실수를 다음 계단에서 반복하지 않기 위해서다.
 
 **BookTimer 쪽에도 남긴다** — 그쪽 세션이 AWS 장애를 디버깅할 때 정체 모를 `facefit-api`
 컨테이너에 헤매지 않도록, BookTimer 레포에 동거 문서 + `CLAUDE.md` 포인터(태스크 3-e).
@@ -126,15 +131,15 @@ facefit까지 합치면 물리 메모리를 ~200MB 넘겨 swap으로 밀린다. 
   - 실측 정정: Boot 4의 `-webmvc`가 **Jackson을 안 끌고 오고**, 딸려 오는 것은 **Jackson 3**(`tools.jackson.*`)라 메서드 이름이 다르다(`isTextual`→`isString` 등). 설계 §4-1에 반영.
   - 저장은 **원본 바이트 그대로** 한다 — 파싱한 트리를 다시 직렬화하면 공백·키 순서가 바뀌어 「있는 그대로 보존」이 깨진다. 본문도 `String`이 아니라 `byte[]`로 받는다(512KB를 실제 바이트로 재고, 문자셋을 컨버터 기본값에 안 맡긴다).
   - ⚠️ **H2가 못 잡는 것 하나**: `MEDIUMTEXT`↔`TEXT` 회귀(둘 다 CLOB). Testcontainers를 들이는 대신 **태스크 3-h 스모크에 64KB 넘는 페이로드 왕복을 넣어** 실제 MySQL에서 확인한다.
-- [ ] ⬜ **3. 동거 배선 + 배포 + 스모크** (설계 §6 태스크 3-a~3-h)
+- [x] ✅ **3. 동거 배선 + 배포 + 스모크** — **2026-09-01 서버 가동 시작.** `https://facefit-api.booktimer.app` 라이브
   - [x] ✅ 3-a 선행 확인 3가지 — 도커 네트워크 **`booktimer_default`** · 배포 자산 `/opt/booktimer/` · `render-env.sh`의 SSM↔환경변수 매핑. `backup-mysql.sh`는 `booktimer` 하드코딩이라 **`--databases booktimer facefit`으로 한 단어만 덧붙인다**(백업 경로를 둘로 늘리지 않는다 — T-138에서 이미 치른 값)
   - [x] ✅ 3-b AWS 선행 — A 레코드(INSYNC·공개 DNS 확인) · SSM `/facefit/SPRING_DATASOURCE_{URL,USERNAME,PASSWORD}`(설계의 `db-password` 대신 **BookTimer 관례에 맞춤** — 이름이 곧 환경변수라 매핑 표가 불필요) · ECR `facefit` · **`facefitDeployRole` 신설**(기존 역할에 얹지 않았다 — 그러면 facefit CI가 BookTimer 배포 권한을 통째로 갖는다) · GitHub 시크릿 4개
-  - [ ] ⬜ 3-c MySQL `facefit` DB + 전용 사용자 (**3-e 머지 뒤**)
+  - [x] ✅ 3-c MySQL `facefit` DB + 전용 사용자 — `GRANT ALL ON facefit.*`만(BookTimer 데이터엔 못 닿는다). **백업 스크립트에 `facefit`을 넣기 전에** 만들었다 — 순서를 뒤집으면 그날 밤 cron이 실패한다
   - [x] ✅ 3-d `server/deploy/compose.facefit.yaml` + `Dockerfile` + `deploy-on-ec2.sh` — `mem_limit 320m` · `-Xmx160m` · external 네트워크 · **ports 없음**
-  - [ ] 🔜 3-e **BookTimer 레포 별도 PR** — Caddy 블록 + `backup-mysql.sh` 한 단어 + 동거 문서 상태 갱신. ⚠️ **이게 먼저 배포돼야** facefit 배포의 헬스체크가 통과한다(Caddy가 그 호스트를 모르면 502)
+  - [x] ✅ 3-e **BookTimer 레포 PR 머지·배포** — Caddy 블록 + `backup-mysql.sh` 한 단어 + 동거 문서. 로컬에서 `caddy validate`(실 이미지)·그쪽 자체 테스트 2종 통과 후 머지. 배포 직후 facefit 호스트가 **502**(=DNS·Caddy·인증서까지 살아 있고 업스트림만 없음)인 것을 확인
   - [x] ✅ 3-f 배포 워크플로 작성 — 테스트 → ECR → S3(`deploy-facefit/`) → SSM → **라이브 헬스체크**. blue/green 없음(메모리 — 설계 §5). 실동작 검증은 머지 시
-  - [ ] 3-g DB 백업 + **복구 리허설 1회**(리허설 없는 백업은 미완으로 친다)
-  - [ ] 3-h 실통신 스모크(**64KB 넘는 페이로드 왕복 포함** — H2가 못 잡는 `MEDIUMTEXT` 회귀를 여기서 실제 MySQL로 확인) + **메모리 실측**(BookTimer 배포를 겹쳐 돌린 직후 `free -m`)
+  - [x] ✅ 3-g DB 백업 + **복구 리허설 완료** — 백업 실행 → S3 객체 확인(덤프에 facefit 포함) → **로컬 Docker의 빈 MySQL에 덤프를 통째로 복원** → 한글 보존 + **라이브 API 응답과 바이트 단위 동일** 확인 → 정리. ⚠️ 첫 시도는 덤프를 잘라 복원해 한글이 깨졌다 — 백업이 아니라 복원 방법의 문제였다(T-008)
+  - [x] ✅ 3-h 실통신 스모크 + 메모리 실측 — health 200 · 404 · PUT/GET 왕복(**한글·미지 필드 바이트 보존**) · **78,578바이트 왕복 동일**(H2가 못 잡던 `MEDIUMTEXT` 회귀를 실제 MySQL에서 확인) · DELETE 204→404 · 401 · **2,001자 400(사진 밀반입 차단이 운영에서 작동)** · CORS 허용/차단(403). 메모리: facefit **149MB**(상한 320) · 호스트 `available` 754MB · OOM 0 · 재시작 0
 - [ ] ⬜ **4. 클라 `logic/backup.ts` + storage 확장** — SDK 래퍼(던짐 → null) · 실패 무음 · 플래그 게터/세터 (TDD)
 - [ ] ⬜ **5. 클라 UX 배선** — 첫 등록 후 1회 옵트인 제안 · Home 상시 버튼 · 5초 디바운스 업로드 · dirty 재시도 · 온보딩 복원 링크 → 미리보기(**「사진은 복원되지 않아요」 고정 표기**)
 - [ ] ⬜ **6. 문구 갱신 + 릴리스 + 실기기 검증** → plan/changeLog sweep
