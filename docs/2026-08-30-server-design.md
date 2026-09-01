@@ -663,8 +663,11 @@ CREATE TABLE community_registration (    -- 「서로 다른 2인」의 근거
   blue/green은 배포 순간 메모리를 2배로 쓰고 **그게 이 박스의 가장 아픈 자리**다(§3-6).
   `// ponytail: 단순 재시작 — 다운타임이 실사용 불만으로 실측되면 그때 blue/green`
   Actions 자격은 **GitHub OIDC 역할** 권고(장기 키 무저장). PR CI는 `server/`+`miniapp/`
-  테스트(워크플로 신설 — 현재 레포에 없음, 실측). 클라는 기존 `npm run release` 그대로 —
-  서버 URL은 `VITE_API_BASE`(.env, MFDS 키 옆).
+  테스트(워크플로 신설 — 현재 레포에 없음, 실측). 클라는 기존 `npm run release` 그대로.
+  ⚠️ **서버 URL은 소스에 박는다**(2026-09-01 구현 시 정정 — 초안은 `VITE_API_BASE` 필수였다).
+  공개 값이고 서버도 하나뿐인데, 환경변수를 필수로 두면 `.env`가 없는 빌드에서 백업이
+  **조용히** 죽는다(모든 서버 경로가 무음 폴백이라 아무도 못 알아챈다). 기본값을 두고
+  `VITE_API_BASE`는 **덮어쓰기 용도로만** 남긴다 — MFDS 키는 비밀이라 env가 맞지만 이건 아니다.
 - **DB 백업 — 새로 만들기 전에 있는 것을 본다**: BookTimer에 **이미 `deploy/backup-mysql.sh`가
   있다**(`deploy/tests/test-backup-mysql.sh`까지 있는 실물). 1순위는 **그 스크립트가 `facefit`
   데이터베이스도 덤프하도록 대상에 추가**하는 것이다 — **백업 경로가 둘이면 하나가 조용히

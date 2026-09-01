@@ -29,6 +29,11 @@ jobs:
         run: npm --prefix miniapp ci
       - name: Run miniapp tests
         run: npm --prefix miniapp test
+      # ⚠️ 테스트 통과만으로는 부족하다 — **vitest는 기본적으로 타입을 안 본다.**
+      # 실제로 `Verdict`에 없는 문자열을 쓴 테스트가 `npm test`를 통과하고 여기서 걸렸다
+      # (v3-1 태스크 4). `build`는 `tsc -b && vite build`라 타입 게이트를 겸한다.
+      - name: Build miniapp (tsc 타입 게이트 겸용)
+        run: npm --prefix miniapp run build
 
       # --- 서버 ---
       # JDK를 러너가 깔아 주므로 foojay 툴체인 자동 다운로드가 돌지 않는다(로컬에만 필요).

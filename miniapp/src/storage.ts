@@ -18,6 +18,10 @@ const PRODUCTS_KEY = 'facefit.products';
 const NOTES_KEY = 'facefit.notes';
 const ONBOARDED_KEY = 'facefit.onboarded';
 const NOTIFY_PROMPTED_KEY = 'facefit.notifyPrompted';
+const BACKUP_ENABLED_KEY = 'facefit.backupEnabled';
+const BACKUP_PROMPTED_KEY = 'facefit.backupPrompted';
+const BACKUP_DIRTY_KEY = 'facefit.backupDirty';
+const LAST_BACKUP_AT_KEY = 'facefit.lastBackupAt';
 
 /** 제품 상한. 개인이 넘길 수 없는 수다 — 기능 제한이 아니라 **쿼터 방어만** 한다. */
 export const PRODUCT_MAX = 200;
@@ -230,6 +234,99 @@ export function saveNotifyPrompted(storage: Storage = localStorage): void {
     storage.setItem(NOTIFY_PROMPTED_KEY, '1');
   } catch {
     // 삼킨다. 여기서 던지면 **촬영 흐름이 알림 때문에 죽는다** — 주객전도다(설계 §3-2).
+  }
+}
+
+/**
+ * 백업 플래그 넷(v3 설계 §4-3). 전부 **꺼진 쪽이 안전한 기본값**이다 — 저장소가 막히거나
+ * 값이 이상하면 「안 켜짐」·「안 물어봄」·「밀린 것 없음」으로 읽는다.
+ *
+ * 값이 `'1'`인지만 보고 JSON을 안 쓰는 것은 온보딩·알림 플래그와 같은 이유다: 손상된 값
+ * 하나 때문에 파싱이 터지느니, 못 알아본 값은 그냥 기본값으로 떨어지는 편이 낫다.
+ */
+
+/**
+ * 백업을 켰는가. **양방향이다** — 끌 수 있어야 「백업 끄기」(=서버 데이터 즉시 삭제)라는
+ * 입구가 성립한다. 기본이 꺼짐인 것은 옵트인 결정 때문이다(설계 §3-4): 서버 전송이 처음
+ * 생기는 기능이라 사용자 행위로 시작한다.
+ */
+export function isBackupEnabled(storage: Storage = localStorage): boolean {
+  try {
+    return storage.getItem(BACKUP_ENABLED_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+export function saveBackupEnabled(on: boolean, storage: Storage = localStorage): void {
+  try {
+    if (on) storage.setItem(BACKUP_ENABLED_KEY, '1');
+    else storage.removeItem(BACKUP_ENABLED_KEY);
+  } catch {
+    // 삼킨다 — 저장 흐름이 백업 설정 때문에 죽으면 주객전도다.
+  }
+}
+
+/**
+ * 백업을 **자동으로 권한 적이 있는가**(켰는가가 아니다). 하는 일은 하나뿐이다:
+ * 제품 첫 등록 직후의 **자동 제안은 딱 한 번.** 거절한 사람에게 매번 다시 묻지 않는다.
+ * 단방향인 것은 되돌릴 이유가 없어서다(notifyPrompted와 동형).
+ */
+export function isBackupPrompted(storage: Storage = localStorage): boolean {
+  try {
+    return storage.getItem(BACKUP_PROMPTED_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+export function saveBackupPrompted(storage: Storage = localStorage): void {
+  try {
+    storage.setItem(BACKUP_PROMPTED_KEY, '1');
+  } catch {
+    // 삼킨다.
+  }
+}
+
+/**
+ * 못 올린 변경이 있는가. **업로드 실패의 유일한 흔적이다** — 백오프 루프를 안 만들고
+ * 이 플래그만 세운 뒤, **다음 앱 시작이 곧 재시도**가 된다(설계 §3-3).
+ * 지울 수 있어야 하는 이유: 못 지우면 성공한 뒤에도 매 실행마다 다시 올린다.
+ */
+export function isBackupDirty(storage: Storage = localStorage): boolean {
+  try {
+    return storage.getItem(BACKUP_DIRTY_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+export function saveBackupDirty(dirty: boolean, storage: Storage = localStorage): void {
+  try {
+    if (dirty) storage.setItem(BACKUP_DIRTY_KEY, '1');
+    else storage.removeItem(BACKUP_DIRTY_KEY);
+  } catch {
+    // 삼킨다.
+  }
+}
+
+/**
+ * 마지막 백업 시각. **서버가 준 문자열을 그대로** 들고 있다 — 표시용이라 해석하지 않는다.
+ * 빈 문자열을 `null`로 접는 것은 화면이 빈 시각을 그리지 않게 하기 위해서다.
+ */
+export function loadLastBackupAt(storage: Storage = localStorage): string | null {
+  try {
+    return storage.getItem(LAST_BACKUP_AT_KEY) || null;
+  } catch {
+    return null;
+  }
+}
+
+export function saveLastBackupAt(iso: string, storage: Storage = localStorage): void {
+  try {
+    storage.setItem(LAST_BACKUP_AT_KEY, iso);
+  } catch {
+    // 삼킨다.
   }
 }
 

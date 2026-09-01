@@ -1,12 +1,20 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  isBackupDirty,
+  isBackupEnabled,
+  isBackupPrompted,
   isNotifyPrompted,
   isOnboarded,
+  loadLastBackupAt,
   loadNotes,
   loadProducts,
   newId,
   PRODUCT_MAX,
+  saveBackupDirty,
+  saveBackupEnabled,
+  saveBackupPrompted,
+  saveLastBackupAt,
   saveNote,
   saveNotifyPrompted,
   saveOnboarded,
@@ -378,5 +386,122 @@ describe('알림 제안 이력 — isNotifyPrompted / saveNotifyPrompted', () =>
   it('저장소가 막혀 있어도 던지지 않는다 — 촬영 흐름이 알림 때문에 죽으면 주객전도다', () => {
     expect(isNotifyPrompted(fakeStorage({ throwOnGet: true }))).toBe(false);
     expect(() => saveNotifyPrompted(fakeStorage({ throwOnSet: true }))).not.toThrow();
+  });
+});
+
+/**
+ * 백업 플래그 넷(설계 §4-3).
+ *
+ * 셋은 「켰나/물어봤나/밀린 게 있나」이고 하나는 시각이다. 전부 **꺼진 쪽이 안전한 기본값**을
+ * 갖는다 — 저장소가 막히거나 값이 이상하면 「안 켜짐」·「안 물어봄」·「밀린 것 없음」이다.
+ *
+ * ⚠️ `backupEnabled`만 **양방향**이다(끌 수 있어야 한다 — 「백업 끄기」가 곧 서버 삭제다).
+ * `backupPrompted`는 단방향이다(제안은 한 번뿐이고, 되돌릴 이유가 없다 — notifyPrompted와 동형).
+ */
+describe('백업 켜짐 — isBackupEnabled / saveBackupEnabled', () => {
+  it('기본은 꺼짐이다 — 서버 전송은 사용자 행위로 시작한다(옵트인)', () => {
+    expect(isBackupEnabled(fakeStorage())).toBe(false);
+  });
+
+  it('켜고 끌 수 있다 — 끄기가 없으면 삭제권을 행사할 입구가 없다', () => {
+    const s = fakeStorage();
+
+    saveBackupEnabled(true, s);
+    expect(isBackupEnabled(s)).toBe(true);
+
+    saveBackupEnabled(false, s);
+    expect(isBackupEnabled(s)).toBe(false);
+  });
+
+  it('키는 `facefit.backupEnabled`다 — 게터·세터가 나란히 오타 나면 아무도 못 잡는다', () => {
+    const s = fakeStorage();
+    seed(s, 'facefit.backupEnabled', '1');
+    expect(isBackupEnabled(s)).toBe(true);
+  });
+
+  it('엉뚱한 값은 꺼진 것으로 친다 — 켜진 것으로 오해하면 안 켠 사람의 데이터가 나간다', () => {
+    const s = fakeStorage();
+    seed(s, 'facefit.backupEnabled', 'true');
+    expect(isBackupEnabled(s)).toBe(false);
+  });
+
+  it('저장소가 막혀 있어도 던지지 않는다', () => {
+    expect(isBackupEnabled(fakeStorage({ throwOnGet: true }))).toBe(false);
+    expect(() => saveBackupEnabled(true, fakeStorage({ throwOnSet: true }))).not.toThrow();
+  });
+});
+
+describe('백업 제안 이력 — isBackupPrompted / saveBackupPrompted', () => {
+  it('기본은 안 물어본 상태다', () => {
+    expect(isBackupPrompted(fakeStorage())).toBe(false);
+  });
+
+  it('한 번 물어보면 다시 안 묻는다', () => {
+    const s = fakeStorage();
+    saveBackupPrompted(s);
+    expect(isBackupPrompted(s)).toBe(true);
+  });
+
+  it('엉뚱한 값이면 안 물어본 것으로 친다 — 한 번 더 묻는 쪽이 영영 못 묻는 것보다 낫다', () => {
+    const s = fakeStorage();
+    seed(s, 'facefit.backupPrompted', 'yes');
+    expect(isBackupPrompted(s)).toBe(false);
+  });
+
+  it('저장소가 막혀 있어도 던지지 않는다', () => {
+    expect(isBackupPrompted(fakeStorage({ throwOnGet: true }))).toBe(false);
+    expect(() => saveBackupPrompted(fakeStorage({ throwOnSet: true }))).not.toThrow();
+  });
+});
+
+describe('밀린 업로드 — isBackupDirty / saveBackupDirty', () => {
+  it('기본은 밀린 것 없음이다', () => {
+    expect(isBackupDirty(fakeStorage())).toBe(false);
+  });
+
+  it('세우고 지울 수 있다 — 지우지 못하면 앱을 열 때마다 영영 재시도한다', () => {
+    const s = fakeStorage();
+
+    saveBackupDirty(true, s);
+    expect(isBackupDirty(s)).toBe(true);
+
+    saveBackupDirty(false, s);
+    expect(isBackupDirty(s)).toBe(false);
+  });
+
+  it('엉뚱한 값이면 밀린 것 없음이다 — 손상된 값 하나로 매 실행마다 업로드하지 않는다', () => {
+    const s = fakeStorage();
+    seed(s, 'facefit.backupDirty', 'dirty');
+    expect(isBackupDirty(s)).toBe(false);
+  });
+
+  it('저장소가 막혀 있어도 던지지 않는다 — 저장 흐름이 백업 때문에 죽으면 주객전도다', () => {
+    expect(isBackupDirty(fakeStorage({ throwOnGet: true }))).toBe(false);
+    expect(() => saveBackupDirty(true, fakeStorage({ throwOnSet: true }))).not.toThrow();
+  });
+});
+
+describe('마지막 백업 시각 — loadLastBackupAt / saveLastBackupAt', () => {
+  it('없으면 null이다', () => {
+    expect(loadLastBackupAt(fakeStorage())).toBeNull();
+  });
+
+  it('저장한 문자열을 그대로 돌려준다 — 표시용이라 해석하지 않는다', () => {
+    const s = fakeStorage();
+
+    saveLastBackupAt('2026-09-01T10:34:18.752Z', s);
+
+    expect(loadLastBackupAt(s)).toBe('2026-09-01T10:34:18.752Z');
+  });
+
+  it('빈 문자열은 없는 것으로 친다 — 화면이 빈 시각을 그리지 않게', () => {
+    const s = fakeStorage();
+    seed(s, 'facefit.lastBackupAt', '');
+    expect(loadLastBackupAt(s)).toBeNull();
+  });
+
+  it('저장소가 막혀 있어도 던지지 않는다', () => {
+    expect(loadLastBackupAt(fakeStorage({ throwOnGet: true }))).toBeNull();
+    expect(() => saveLastBackupAt('2026-09-01T00:00:00.000Z', fakeStorage({ throwOnSet: true }))).not.toThrow();
   });
 });
