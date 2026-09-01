@@ -68,3 +68,15 @@ button:focus-visible {
   outline: 2px solid var(--blue);
   outline-offset: 1px;
 }
+
+/* iOS Safari: date input이 고유 너비를 써서 width:100%를 무시하고 카드 밖으로 넘친다.
+   값은 shadow 요소로 그려져 인라인 textAlign도 안 먹는다. (실기기 2026-09-02) */
+input[type="date"] {
+  -webkit-appearance: none;
+  appearance: none;
+  display: block;
+  min-width: 0;
+}
+input[type="date"]::-webkit-date-and-time-value {
+  text-align: left;
+}
