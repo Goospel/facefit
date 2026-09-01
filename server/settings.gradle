@@ -1,0 +1,7 @@
+plugins {
+	// JDK 21 toolchain 자동 다운로드 — 이 머신엔 17·23·25만 있고 21이 없다(실측 2026-09-01).
+	// BookTimer와 같은 장치라, 두 서버가 같은 방식으로 빌드된다.
+	id 'org.gradle.toolchains.foojay-resolver-convention' version '1.0.0'
+}
+
+rootProject.name = 'facefit-server'

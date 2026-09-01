@@ -9,3 +9,9 @@
 # .ps1은 BOM+EOL 보존을 위해 binary 취급
 # (PowerShell 5.1은 BOM 없는 UTF-8을 CP949로 잘못 읽어 한글 리터럴이 깨진다)
 *.ps1 -text
+
+# Gradle 래퍼 — 위의 전역 eol=lf에 대한 예외 둘. BookTimer가 같은 예외를 갖고 있다.
+# .bat이 LF로 풀리면 cmd.exe가 라벨·goto에서 어긋날 수 있고, .jar은 애초에 텍스트가 아니다.
+# (`gradlew` 자체는 셸 스크립트라 전역 규칙대로 LF가 맞다 — 예외를 두면 오히려 깨진다)
+*.bat text eol=crlf
+*.jar binary

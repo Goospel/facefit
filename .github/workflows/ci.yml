@@ -1,0 +1,44 @@
+name: CI
+
+# PR에서 테스트 게이트만 돌린다(배포 워크플로는 v3-1 태스크 3에서 신설).
+#
+# ⚠️ paths 필터를 **일부러 안 둔다.** 서버·미니앱을 경로별로 갈라 두면 문서-only PR에서 job이
+#    스킵되는데, 이걸 required status check로 걸면 체크가 pending으로 남아 PR을 영영 못 머지한다
+#    (BookTimer가 같은 자리에서 배운 것 — 그 레포 ci.yml 주석). 서버 테스트가 1분이라
+#    항상 도는 편이 싸다.
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      # --- 미니앱 ---
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: miniapp/package-lock.json
+      - name: Install miniapp deps
+        run: npm --prefix miniapp ci
+      - name: Run miniapp tests
+        run: npm --prefix miniapp test
+
+      # --- 서버 ---
+      # JDK를 러너가 깔아 주므로 foojay 툴체인 자동 다운로드가 돌지 않는다(로컬에만 필요).
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+      - name: Run server tests
+        working-directory: server
+        run: |
+          chmod +x ./gradlew
+          ./gradlew test --no-daemon

@@ -4,6 +4,22 @@
 > 앞으로 할 일은 [`plan.md`](plan.md), 함정은 [`claude-docs/troubleshooting.md`](claude-docs/troubleshooting.md).
 > PR 번호는 적지 않는다 — 미래에 확정되는 값이라 stale이 조용히 쌓인다. 찾으려면 제목으로 `git log --grep`.
 
+## 2026-09-01 · v3-1 태스크 1 — 서버 부트스트랩 (첫 Java 코드)
+
+`server/`에 Spring Boot 골격을 세웠다. `/health`(바디 없음 — 감시 도구가 상태 코드만 본다) ·
+프로퍼티 기반 CORS(운영 2오리진, dev에서만 vite 5320 추가) · Flyway V1(backup 테이블) ·
+CI 워크플로. TDD로 Red 8건을 먼저 보고 Green 12건으로 닫았다.
+
+설계에 적힌 의존성 이름이 **Boot 3 것이라 그대로 쓰면 안 됐다** — BookTimer가 Boot 4.1.0을
+쓰고 있어 `spring-boot-starter-webmvc`·`spring-boot-flyway`로 맞췄다. 두 서버가 같은 호스트에
+동거하는 이상 조합도 같아야 운영자가 하나만 기억한다. 같은 이유로 Gradle 래퍼·툴체인·액션
+버전도 BookTimer를 따랐다.
+
+부수 소득 둘. **Flyway V1이 H2 MySQL 모드에서 그대로 적용돼** Testcontainers 승격이 아직
+필요 없다(단 H2는 `MEDIUMTEXT`↔`TEXT` 회귀를 못 잡아, 그 판단은 태스크 2의 512KB 경계로
+미뤘다). 그리고 CI에 **경로 필터를 안 뒀다** — 두면 문서-only PR에서 job이 스킵돼 required
+check가 pending으로 남고 PR을 영영 못 머지한다(BookTimer가 이미 치른 값).
+
 ## 2026-09-01 · v3 서버 설계 확정 — 「서버 0」 종료, 그리고 BookTimer EC2 동거
 
 OCR 무료 경로가 전멸했다는 실측(SDK에 OCR API 없음 · 토스 웹뷰가 라이브 텍스트 차단 ·
