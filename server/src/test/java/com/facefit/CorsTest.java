@@ -28,7 +28,12 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class CorsTest {
 
 	private static final String LIVE = "https://facefit.web.tossmini.com";
-	private static final String CONSOLE_QR = "https://facefit.private-web.tossmini.com";
+	/**
+	 * ⚠️ **실측값이다**(2026-09-01 실기기). 설계 초안은 `private-web`이라고 적었는데 실제로는
+	 * `private-apps`였고, 그 한 글자 차이로 모든 프리플라이트가 403이었다 — 그리고 앱은
+	 * 무음 폴백이라 **아무 일도 안 일어난 것처럼 보였다**(T-009).
+	 */
+	private static final String CONSOLE_QR = "https://facefit.private-apps.tossmini.com";
 
 	@Autowired
 	private MockMvc mockMvc;
@@ -59,6 +64,34 @@ class CorsTest {
 		mockMvc.perform(get("/health").header("Origin", LIVE))
 				.andExpect(status().isOk())
 				.andExpect(header().string("Access-Control-Allow-Origin", LIVE));
+	}
+
+	@Test
+	@DisplayName("토스가 환경 이름을 바꿔도 facefit의 오리진이면 통과한다 — 이름 하나에 매달리지 않는다")
+	void preflight_allowsAnyFacefitTossminiSubdomain() throws Exception {
+		// 실측으로 `private-web`이 아니라 `private-apps`임이 드러났다. 정확한 이름을 **맞히는
+		// 것**에 기대는 대신, 우리 앱 이름으로 시작하는 tossmini.com 하위 도메인을 허용한다 —
+		// 틀리면 무음으로 죽는 자리라 「맞히기」가 방어책이 못 된다.
+		for (String origin : new String[] {
+				"https://facefit.private-apps.tossmini.com",
+				"https://facefit.web.tossmini.com",
+				"https://facefit.tossmini.com",
+		}) {
+			mockMvc.perform(options("/health")
+							.header("Origin", origin)
+							.header("Access-Control-Request-Method", "GET"))
+					.andExpect(status().isOk())
+					.andExpect(header().string("Access-Control-Allow-Origin", origin));
+		}
+	}
+
+	@Test
+	@DisplayName("다른 앱의 tossmini 오리진은 막는다 — 넓힌 것이 「토스 전체」가 되면 안 된다")
+	void preflight_rejectsOtherMiniappOrigin() throws Exception {
+		mockMvc.perform(options("/health")
+						.header("Origin", "https://booktimer.web.tossmini.com")
+						.header("Access-Control-Request-Method", "GET"))
+				.andExpect(status().isForbidden());
 	}
 
 	@Test
