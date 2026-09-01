@@ -480,10 +480,17 @@ v2-2 §3-5의 「낡는 문장을 능동적으로 고친다」 관례 계승:
 
 ### 4-1. 서버 스택
 
-- **Spring Boot 3.x 최신 안정판(부트스트랩 시점 확인) + Java 21 LTS + Gradle(Kotlin DSL).**
-  의존성: `spring-boot-starter-web` · `spring-boot-starter-jdbc`(JdbcTemplate — JPA는
-  테이블 3개에 과하다) · **`com.mysql:mysql-connector-j`** · `flyway-core`(스키마 버전 관리 —
-  `schema.sql`은 첫 ALTER에서 무너진다). 그 외 의존성 추가는 사다리 원칙(있는 것 먼저).
+- **Spring Boot 4.1.0 + Java 21 toolchain + Gradle 9.7.0(Groovy DSL)** — 전부 BookTimer와
+  같은 값이다(2026-09-01 구현 시 실측·정정. 초안이 적었던 「Boot 3.x + Kotlin DSL」은 폐기).
+  의존성: `spring-boot-starter-webmvc` · `spring-boot-starter-jackson` ·
+  `spring-boot-starter-jdbc`(JdbcTemplate — JPA는 테이블 3개에 과하다) ·
+  **`com.mysql:mysql-connector-j`** · `spring-boot-flyway` + `org.flywaydb:flyway-mysql`.
+  ⚠️ **Boot 3 이름을 그대로 쓰면 안 된다** — `-web`은 `-webmvc`, `flyway-core`는
+  `spring-boot-flyway`다.
+  ⚠️ **`-webmvc`가 Jackson을 안 끌고 온다**(컴파일이 깨진다 — 실측). 그리고 딸려 오는 것은
+  **Jackson 3**(`tools.jackson.*`, 3.1.4)라 패키지도 메서드도 다르다:
+  `isTextual()`→`isString()` · `textValue()`→`stringValue()` · `fieldNames()`→`propertyNames()` ·
+  `fields()`→`properties()`. **Jackson 2 예제를 붙이면 컴파일이 안 된다.**
 - 패키지: `backup/` · `community/` · `common/`(레이트리밋 인터셉터 · CORS 설정 · 페이로드
   검증). 컨트롤러는 얇게, 로직은 순수 함수로 — 클라 TDD 규율 그대로.
 - 테스트: JUnit5 + MockMvc, DB는 **H2 MySQL 모드**(`MODE=MySQL`).

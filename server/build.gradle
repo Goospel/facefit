@@ -25,6 +25,12 @@ repositories {
 
 dependencies {
 	implementation 'org.springframework.boot:spring-boot-starter-webmvc'
+	// ⚠️ Boot 4의 `-webmvc` 스타터는 Jackson을 **안 끌고 온다**(실측 — 컴파일 자체가 깨졌다).
+	// 이 서버는 페이로드를 파싱해 검증하는 것이 일의 절반이라 JSON이 선택이 아니다.
+	// ⚠️ 그리고 Boot 4가 딸려 오는 것은 **Jackson 3**다 — 패키지가 `com.fasterxml.jackson`이
+	// 아니라 `tools.jackson`이고, `isTextual()`·`textValue()`가 `isString()`·`stringValue()`로
+	// 바뀌었다. Jackson 2 예제를 그대로 붙이면 컴파일이 안 된다(실측 3.1.4).
+	implementation 'org.springframework.boot:spring-boot-starter-jackson'
 	// JdbcTemplate — 테이블 3개에 JPA는 과하다(설계 §4-1).
 	implementation 'org.springframework.boot:spring-boot-starter-jdbc'
 	// 스키마 버전 관리. `schema.sql`은 첫 ALTER에서 무너진다(설계 §4-1).
