@@ -42,6 +42,23 @@ export function buildBackupBlob(products: Product[], notes: Notes, clientSavedAt
 }
 
 /**
+ * 이 기기에서 백업을 쓸 수 있는가(토스 5.232.0 이상).
+ *
+ * **UI를 숨기는 조건은 「켰는가」가 아니라 이것이다**(notify와 같은 규율) — 키를 못 얻는
+ * 기기에 버튼만 남기면 「눌렀는데 아무 일도 없다」가 된다.
+ *
+ * ⚠️ `try`가 장식이 아니다 — `isSupported`는 토스 웹뷰 전역을 읽어 **토스 밖에서 TypeError로
+ * 터진다.** 여기서 새어 나가면 백업을 숨기려다 화면을 죽인다.
+ */
+export function isBackupSupported(): boolean {
+  try {
+    return User.getAnonymousKey.isSupported();
+  } catch {
+    return false;
+  }
+}
+
+/**
  * 익명 키를 가져온다. **`null`이면 백업 UI 자체를 숨긴다** — 사용자가 할 수 있는 일이 없는
  * 안내는 소음이기 때문이다(notify 전례).
  *
@@ -50,11 +67,7 @@ export function buildBackupBlob(products: Product[], notes: Notes, clientSavedAt
  * (SDK 문서: `UNSUPPORTED_APP_VERSION`·`UNKNOWN_ERROR`).
  */
 export async function getBackupKey(): Promise<string | null> {
-  try {
-    if (!User.getAnonymousKey.isSupported()) return null;
-  } catch {
-    return null;
-  }
+  if (!isBackupSupported()) return null;
 
   try {
     const res = await User.getAnonymousKey();

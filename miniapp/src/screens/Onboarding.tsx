@@ -16,7 +16,20 @@ import { LOCAL_ONLY } from './usePhotos';
  *
  * 예시 타임랩스 일러스트는 v1 보류다 — 번들 자산 제작 비용 대비 검증 안 된 가설이다.
  */
-export function Onboarding({ onDone }: { onDone: () => void }) {
+export function Onboarding({
+  onDone,
+  onRestore,
+}: {
+  onDone: () => void;
+  /**
+   * 기기 이전 복원(v3 §3-4). **없으면 링크 자체가 없다** — 쓸 수 없는 기기(구버전 토스)에서
+   * 링크만 남기면 「눌렀는데 아무 일도 없다」가 된다. 그 판단은 App이 한다.
+   *
+   * 자리가 여기인 이유: 새 기기의 첫 화면이 온보딩이라 **복원을 떠올릴 유일한 순간**이다.
+   * Home으로 내리면 이미 「새로 시작한」 상태와 섞인다.
+   */
+  onRestore?: () => void;
+}) {
   return (
     <main style={ui.pageFull}>
       <h1 style={{ ...ui.h1, marginTop: 24 }}>그화장품효과있나</h1>
@@ -53,6 +66,11 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
         <button style={ui.primary} onClick={onDone}>
           시작하기
         </button>
+        {onRestore && (
+          <button style={{ ...ui.ghost, width: '100%', marginTop: 8 }} onClick={onRestore}>
+            기기를 바꿨나요? 기록 복원
+          </button>
+        )}
       </div>
     </main>
   );
