@@ -22,6 +22,8 @@
      각 항목의 frontmatter(summary)에서 재생성합니다. 내용을 바꾸려면 그 항목의
      summary를 고치세요(단일 출처). 최신 항목이 위. -->
 
+- [T-008](troubleshooting/T-008.md) · mysqldump 덤프에서 한 데이터베이스 구간만 잘라 복원하면 헤더의 `SET NAMES utf8mb4`가 빠져 한글이 조용히 깨진다 — 복구 리허설은 덤프를 통째로, 빈 MySQL에 넣어야 한다
+- [T-007](troubleshooting/T-007.md) · GitHub OIDC의 `sub` 클레임이 레포마다 형식이 다르다(신규 레포는 `owner@id/repo@id`) — 옆 프로젝트의 IAM 신뢰 정책을 복사하면 「Not authorized」로 죽는다. 실제 클레임은 CloudTrail에서 확인한다
 - [T-006](troubleshooting/T-006.md) · SSM Send-Command의 `--parameters file://` JSON에 한글을 넣으면 AWS CLI가 Windows 로케일로 읽어 `text contents could not be decoded`로 죽는다 — 원격 명령은 ASCII로만 쓴다
 - [T-005](troubleshooting/T-005.md) · Git Bash `wc -m`은 C 로케일이라 한글을 바이트로 센다(535자를 1264로) — 글자 수 제한 검증은 PowerShell `.Length`로 잰다
 - [T-004](troubleshooting/T-004.md) · 네이티브 confirm이 렌더러를 잡으면 CDP 입력·스크린샷·스크립트 주입이 전부 타임아웃돼 「탭 CDP 상함」과 같은 얼굴로 죽는다 — 전부 막히면 세션 상함이 아니라 다이얼로그 블로킹을 먼저 의심하고 사용자에게 화면 확인을 요청한다
