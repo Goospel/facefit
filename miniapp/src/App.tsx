@@ -22,6 +22,7 @@ import {
   isBackupEnabled,
   isBackupPrompted,
   isOnboarded,
+  loadLastBackupAt,
   loadNotes,
   loadProducts,
   saveBackupDirty,
@@ -79,6 +80,12 @@ export function App() {
    */
   const backupSupported = useRef(isBackupSupported()).current;
   const [backupEnabled, setBackupEnabled] = useState(isBackupEnabled);
+  /**
+   * 마지막 백업 시각. **화면에 그리려고 state로 든다** — 저장소에만 두면 업로드가 성공해도
+   * 화면이 안 바뀌어, 사용자가 「지금 지켜지고 있나」에 답할 방법이 없다(2026-09-01 실기기에서
+   * 드러난 구멍이다).
+   */
+  const [lastBackupAt, setLastBackupAt] = useState(loadLastBackupAt);
   /** 제품 첫 등록 직후의 1회 제안. 켜짐 여부와 **별개**다 — 물어본 적이 있는가만 본다. */
   const [askBackup, setAskBackup] = useState(false);
   /**
@@ -96,11 +103,17 @@ export function App() {
    */
   async function pushBackup(nextProducts: Product[], nextNotes: Notes) {
     const key = await getBackupKey();
-    if (!key) return;
+    // 키를 못 얻은 것도 **못 올린 것**이다 — 조용히 넘어가면 화면이 「켜짐」이라 말하면서
+    // 실제로는 아무것도 안 올라간 상태가 된다.
+    if (!key) return saveBackupDirty(true);
 
-    const ok = await uploadBackup(key, buildBackupBlob(nextProducts, nextNotes, new Date().toISOString()));
+    const now = new Date().toISOString();
+    const ok = await uploadBackup(key, buildBackupBlob(nextProducts, nextNotes, now));
     saveBackupDirty(!ok);
-    if (ok) saveLastBackupAt(new Date().toISOString());
+    if (ok) {
+      saveLastBackupAt(now);
+      setLastBackupAt(now);
+    }
   }
 
   /** 켤 때는 **즉시 한 번** 올린다 — 켠 직후 서버가 비어 있으면 켠 보람이 없다. */
@@ -116,6 +129,9 @@ export function App() {
     saveBackupEnabled(false);
     saveBackupDirty(false);
     setBackupEnabled(false);
+    // 서버 데이터를 지우므로 「마지막 백업」도 더는 참이 아니다.
+    saveLastBackupAt('');
+    setLastBackupAt(null);
     void (async () => {
       const key = await getBackupKey();
       if (key) await deleteBackup(key);
@@ -204,7 +220,11 @@ export function App() {
           onShoot={() => setView('shoot')}
           backup={
             backupSupported
-              ? { enabled: backupEnabled, onToggle: backupEnabled ? disableBackup : enableBackup }
+              ? {
+                  enabled: backupEnabled,
+                  lastBackupAt,
+                  onToggle: backupEnabled ? disableBackup : enableBackup,
+                }
               : undefined
           }
         />

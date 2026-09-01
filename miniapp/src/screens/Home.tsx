@@ -1,5 +1,6 @@
 import { useState } from 'react';
 
+import { formatBackupTime } from '../logic/backup';
 import { isActive, sortProducts } from '../logic/products';
 import { isNotifySupported, requestNotifyAgreement } from '../notify';
 import type { Notes, Product } from '../storage';
@@ -15,6 +16,16 @@ import { LOCAL_ONLY, useObjectUrl, usePhotos } from './usePhotos';
 
 const VERDICT_KO: Record<string, string> = { better: '좋아졌어요', same: '그대로예요', worse: '나빠졌어요' };
 
+/**
+ * 백업 상태 한 줄. **켜 놓고 안 되는 상태를 숨기지 않는다** — 그게 제일 위험한 상태다
+ * (사용자는 지켜지고 있다고 믿는데 실제로는 아무것도 안 올라갔다).
+ */
+function backupStateText(enabled: boolean, lastBackupAt: string | null): string {
+  if (!enabled) return '기록 백업이 꺼져 있어요';
+  const at = formatBackupTime(lastBackupAt);
+  return at ? `기록 백업 켜짐 · 마지막 백업 ${at}` : '기록 백업 켜짐 · 아직 백업하지 못했어요';
+}
+
 export function Home({
   products,
   notes,
@@ -28,10 +39,10 @@ export function Home({
   date: string;
   onShoot: () => void;
   /**
-   * 기록 백업 토글(v3 §3-4). **`undefined`면 버튼 자체가 없다** — 쓸 수 없는 기기에서
-   * 버튼만 남기면 「눌렀는데 아무 일도 없다」가 된다(알림 버튼과 같은 규율). 그 판단은 App이 한다.
+   * 기록 백업(v3 §3-4). **`undefined`면 표면 자체가 없다** — 쓸 수 없는 기기에서 버튼만
+   * 남기면 「눌렀는데 아무 일도 없다」가 된다(알림 버튼과 같은 규율). 그 판단은 App이 한다.
    */
-  backup?: { enabled: boolean; onToggle: () => void };
+  backup?: { enabled: boolean; lastBackupAt: string | null; onToggle: () => void };
 }) {
   const { photos } = usePhotos();
   /**
@@ -101,14 +112,25 @@ export function Home({
       )}
 
       {/*
-        알림 버튼과 달리 **상태를 그린다** — 백업은 켜짐/꺼짐의 단일 출처가 이 기기이고
-        (동의 여부와 달리 토스가 아니다), 켜 놓고도 그걸 확인할 자리가 없으면 사용자는
-        「내 기록이 지금 지켜지고 있나」에 답할 방법이 없다.
+        알림 버튼과 달리 **상태를 버튼과 갈라서 글자로 말한다.**
+
+        ⚠️ 처음엔 버튼 라벨 하나로 뒀는데, 실기기에서 사용자가 「기록 백업 켜기」를 보고
+        **이미 켜진 줄 알았다**(2026-09-01). 토글 라벨에 행동만 적으면 상태로 읽힌다 —
+        어느 쪽으로 읽어도 말이 되기 때문이다.
+
+        같은 줄이 두 번째 구멍도 막는다: 켜기를 눌렀을 때 성공했는지 화면에 아무 표시가
+        없었다. 백그라운드 업로드가 조용한 것은 의도지만(무음 폴백), **사용자가 명시적으로
+        누른 행동**까지 조용하면 그건 폴백이 아니라 그냥 깜깜한 것이다.
       */}
       {backup && (
-        <button style={{ ...ui.ghost, width: '100%', marginTop: 8 }} onClick={backup.onToggle}>
-          {backup.enabled ? '기록 백업 끄기' : '기록 백업 켜기'}
-        </button>
+        <div style={{ marginTop: 8 }}>
+          <p data-testid="backup-state" style={{ ...ui.sub, margin: '0 0 6px', textAlign: 'center' }}>
+            {backupStateText(backup.enabled, backup.lastBackupAt)}
+          </p>
+          <button style={{ ...ui.ghost, width: '100%' }} onClick={backup.onToggle}>
+            {backup.enabled ? '기록 백업 끄기' : '기록 백업 켜기'}
+          </button>
+        </div>
       )}
 
       <h2 style={{ ...ui.h2, fontSize: 14, color: 'var(--text-sub)', marginTop: 24 }}>{`쓰는 중 ${using.length}`}</h2>

@@ -22,6 +22,7 @@
      각 항목의 frontmatter(summary)에서 재생성합니다. 내용을 바꾸려면 그 항목의
      summary를 고치세요(단일 출처). 최신 항목이 위. -->
 
+- [T-010](troubleshooting/T-010.md) · 토글 버튼에 행동만 적으면(「기록 백업 켜기」) 사용자가 그것을 상태로 읽는다 — 실기기에서 이미 켜진 줄 알고 안 눌렀고, 서버 로그에 요청이 없어 한참을 코드에서 원인을 찾았다
 - [T-009](troubleshooting/T-009.md) · 미니앱 웹뷰의 실제 오리진은 `facefit.private-apps.tossmini.com`이다(설계가 적은 `private-web`이 아니다) — CORS 허용값을 문서에서 베끼면 전 요청이 403이 되고, 무음 폴백이라 앱에서는 아무 일도 안 일어난 것처럼 보인다
 - [T-008](troubleshooting/T-008.md) · mysqldump 덤프에서 한 데이터베이스 구간만 잘라 복원하면 헤더의 `SET NAMES utf8mb4`가 빠져 한글이 조용히 깨진다 — 복구 리허설은 덤프를 통째로, 빈 MySQL에 넣어야 한다
 - [T-007](troubleshooting/T-007.md) · GitHub OIDC의 `sub` 클레임이 레포마다 형식이 다르다(신규 레포는 `owner@id/repo@id`) — 옆 프로젝트의 IAM 신뢰 정책을 복사하면 「Not authorized」로 죽는다. 실제 클레임은 CloudTrail에서 확인한다
