@@ -20,12 +20,18 @@ export function Home({
   notes,
   date,
   onShoot,
+  backup,
 }: {
   products: Product[];
   notes: Notes;
   /** 오늘. 「오늘 찍었나」와 「지금 쓰는 제품」이 같은 값을 봐야 한다. */
   date: string;
   onShoot: () => void;
+  /**
+   * 기록 백업 토글(v3 §3-4). **`undefined`면 버튼 자체가 없다** — 쓸 수 없는 기기에서
+   * 버튼만 남기면 「눌렀는데 아무 일도 없다」가 된다(알림 버튼과 같은 규율). 그 판단은 App이 한다.
+   */
+  backup?: { enabled: boolean; onToggle: () => void };
 }) {
   const { photos } = usePhotos();
   /**
@@ -91,6 +97,17 @@ export function Home({
           onClick={() => requestNotifyAgreement((agreed) => agreed && setNotifyAsked(true))}
         >
           {notifyAsked ? '알림 신청됨' : '아침 알림 받기'}
+        </button>
+      )}
+
+      {/*
+        알림 버튼과 달리 **상태를 그린다** — 백업은 켜짐/꺼짐의 단일 출처가 이 기기이고
+        (동의 여부와 달리 토스가 아니다), 켜 놓고도 그걸 확인할 자리가 없으면 사용자는
+        「내 기록이 지금 지켜지고 있나」에 답할 방법이 없다.
+      */}
+      {backup && (
+        <button style={{ ...ui.ghost, width: '100%', marginTop: 8 }} onClick={backup.onToggle}>
+          {backup.enabled ? '기록 백업 끄기' : '기록 백업 켜기'}
         </button>
       )}
 

@@ -192,6 +192,17 @@ export function saveNote(date: string, verdict: Verdict, storage: Storage = loca
 }
 
 /**
+ * 관찰 전체를 덮어쓴다. **복원 전용이다**(v3 §3-4) — 평소 경로는 `saveNote` 하나뿐이고,
+ * 여기로 통째 쓰기가 생기는 유일한 이유가 「기기 이전 복원」이다.
+ *
+ * ⚠️ 쓴 뒤에는 `loadNotes`로 **다시 읽어서** 화면에 올린다 — 서버에서 온 값이라 형태를
+ * 못 믿는데, 방어 규칙을 여기에 또 쓰면 로더와 두 벌이 되어 드리프트한다.
+ */
+export function saveNotes(notes: Notes, storage: Storage = localStorage): void {
+  write(NOTES_KEY, notes, storage);
+}
+
+/**
  * 온보딩을 봤는가. **엉뚱한 값이면 안 본 것으로 친다** — 온보딩을 한 번 더 보는 쪽이
  * 프라이버시·권한 고지를 못 본 채로 카메라를 여는 것보다 안전하다.
  *

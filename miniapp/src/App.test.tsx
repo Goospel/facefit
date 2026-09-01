@@ -22,6 +22,22 @@ vi.mock('./photoStore', async (orig) => ({
   listPhotos: vi.fn(),
 }));
 
+/**
+ * 백업 모듈도 목이다 — 실물(무음 실패 규율)은 `logic/backup.test.ts`가 잰다.
+ * 여기서 재는 것은 **배선**뿐이다: 언제 부르는가 · 실패를 어디에 남기는가 · 무엇을 숨기는가.
+ *
+ * ⚠️ 기본은 **미지원**으로 둔다. 그래야 기존 테스트들이 백업 UI 때문에 흔들리지 않고,
+ * 지원 기기를 재는 쪽이 그걸 명시적으로 켠다.
+ */
+vi.mock('./logic/backup', async (orig) => ({
+  ...(await orig<typeof import('./logic/backup')>()),
+  isBackupSupported: vi.fn(() => false),
+  getBackupKey: vi.fn(async () => null),
+  uploadBackup: vi.fn(async () => true),
+  fetchBackup: vi.fn(async () => null),
+  deleteBackup: vi.fn(async () => true),
+}));
+
 afterEach(cleanup);
 
 const tab = (name: string) => screen.getByRole('button', { name });
