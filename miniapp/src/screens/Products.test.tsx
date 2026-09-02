@@ -131,10 +131,24 @@ describe('제품 목록', () => {
     expect(screen.getByText('선크림')).toBeTruthy();
   });
 
-  it('시작일부터 며칠째인지 보여준다', () => {
-    // 8/01 시작, 오늘 8/29 → 28일째.
+  it('시작일부터 며칠째인지 보여준다 — 시작 당일이 1일째다', () => {
+    // 8/01 시작, 오늘 8/29 → daysBetween 28 + 1 = 29일째.
     setup([p({ startDate: '2026-08-01' })]);
-    expect(screen.getByText('D+28')).toBeTruthy();
+    expect(screen.getByText('29')).toBeTruthy();
+    expect(screen.getByText('일째')).toBeTruthy();
+  });
+
+  it('오늘 시작한 제품은 1일째다 — 0일째는 말이 안 된다', () => {
+    setup([p({ startDate: TODAY })]);
+    expect(screen.getByText('1')).toBeTruthy();
+  });
+
+  it('종료한 제품은 쓴 날수를 보여주고, 그 수는 오늘과 무관하다', () => {
+    // 8/1 ~ 8/11 → 11일. 오늘까지 세면 끝난 제품이 계속 자란다.
+    setup([p({ startDate: '2026-08-01', endDate: '2026-08-11' })]);
+    expect(screen.getByText('11')).toBeTruthy();
+    expect(screen.getByText('일')).toBeTruthy();
+    expect(screen.queryByText('일째')).toBeNull();
   });
 
   it('종료한 제품은 쓴 기간을 보여준다 — 오늘까지 세면 끝난 제품이 계속 자란다', () => {
@@ -278,6 +292,18 @@ describe('제품 추가', () => {
   });
 });
 
+describe('카드 — 읽는 카드', () => {
+  it('카드 안의 버튼은 카드 자체 하나뿐이고, 누르면 수정 폼이 열린다', () => {
+    // 메인 페이지에 카드마다 버튼 셋이 깔리면 목록이 아니라 조작판으로 읽힌다(v4-1 §3-3).
+    setup([p()]);
+    expect(within(screen.getByTestId('section-active')).getAllByRole('button')).toHaveLength(1);
+
+    fireEvent.click(btn('토너 수정'));
+
+    expect(screen.getByLabelText('제품 이름')).toBeTruthy();
+  });
+});
+
 describe('제품 수정', () => {
   it('기존 값이 폼에 채워진다', () => {
     setup([p({ name: '토너', category: 'toner', startDate: '2026-08-01' })]);
@@ -334,19 +360,32 @@ describe('제품 수정', () => {
   });
 });
 
-describe('오늘까지 쓰고 종료', () => {
-  it('종료일을 오늘로 넣는다 — 오늘까지 쓴 것으로 센다', () => {
+describe('오늘까지 쓰고 종료 — 폼 안에 산다', () => {
+  it('종료일을 오늘로 넣고 폼을 닫는다 — 오늘까지 쓴 것으로 센다', () => {
     // 어제로 넣으면 오늘 찍은 사진에 그 제품이 안 붙는다. 경계 하루가 구간 바를 어긋나게 한다.
     const { onChange } = setup([p()]);
+    fireEvent.click(btn('토너 수정'));
 
     fireEvent.click(btn('토너 종료'));
 
     expect(onChange.mock.calls[0][0][0].endDate).toBe(TODAY);
+    expect(screen.queryByLabelText('제품 이름')).toBeNull();
   });
 
-  it('이미 종료한 제품에는 그 버튼이 없다', () => {
+  it('이미 종료한 제품의 폼에는 그 버튼이 없다 — 삭제는 있다', () => {
     setup([p({ endDate: '2026-08-10' })]);
+    fireEvent.click(btn('토너 수정'));
+
     expect(screen.queryByRole('button', { name: '토너 종료' })).toBeNull();
+    expect(btn('토너 삭제')).toBeTruthy();
+  });
+
+  it('추가 폼에는 종료·삭제가 없다 — 아직 없는 제품이다', () => {
+    setup([p()]);
+    fireEvent.click(btn('제품 추가'));
+
+    expect(screen.queryByRole('button', { name: /종료$/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /삭제$/ })).toBeNull();
   });
 });
 
@@ -627,6 +666,7 @@ describe('제품 삭제', () => {
   it('한 번 묻고 지운다 — 되돌릴 수 없다', () => {
     const ask = vi.spyOn(window, 'confirm').mockReturnValue(true);
     const { onChange } = setup([p({ id: 'a' }), p({ id: 'b', name: '세럼' })]);
+    fireEvent.click(btn('토너 수정'));
 
     fireEvent.click(btn('토너 삭제'));
 
@@ -637,6 +677,7 @@ describe('제품 삭제', () => {
   it('아니라고 하면 그대로 둔다', () => {
     vi.spyOn(window, 'confirm').mockReturnValue(false);
     const { onChange } = setup([p()]);
+    fireEvent.click(btn('토너 수정'));
 
     fireEvent.click(btn('토너 삭제'));
 
