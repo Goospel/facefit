@@ -157,7 +157,7 @@ B를 고른 이유)가 거기서 깎인다.
 | 한도(실측) | `usage`의 관계 |
 |---|---|
 | 최상위 화이트리스트(`BlobValidator.ALLOWED_TOP_LEVEL` 넷 · 모르는 키 400) | **`usage` 추가 필수** — 서버 변경 없이는 새 클라의 PUT이 전부 400 |
-| 512KB 본문 | 하루 ~40B(`"2026-09-02":["id"]`) × 365 ≈ 15KB/년 — 여유 |
+| 512KB 본문 | 제품 id가 UUID(36자)라 하루 ~53B(id 1개) · 가끔 제품 3개면 ~130B → 연 20~50KB. 실제 구속 조건은 `MAX_USAGE_DAYS`가 아니라 **본문 상한**이다(제품 200건 + notes + usage 합산) — 수년 뒤 닿으면 PUT이 영구 400이 되어 「아직 백업하지 못했어요」가 상시 뜬다(리뷰 2026-09-02 지적, 이번 계단 밖) |
 | 2,000자 재귀 문자열 상한 | id는 36자 · 날짜 10자 — 무관. 사진 불변식 그대로 |
 | `MAX_NOTES` 4,000키 | **`MAX_USAGE_DAYS = 4_000`을 같은 논리로**(하루 1키 · 10년치) |
 | `products` 200건 | 무관 |
@@ -364,7 +364,7 @@ const tag = ids === undefined ? '' : names.length ? ` · ${names.join(', ')}` : 
 **PR ①(서버 · 브랜치 `feat/backup-usage-key`)** — 예상 +15줄 / 테스트 3건
 1. Red: `BackupValidationTest` 3건(§5-24).
 2. `BlobValidator`: `usage` 화이트리스트 · `MAX_USAGE_DAYS` · 객체·키 수 검사.
-3. `./gradlew test` → PR → 사용자 머지 결정 → **배포**(`deploy-on-ec2.sh`) → `PUT` 스모크(옛 클라 블롭 200 · `usage` 포함 블롭 200).
+3. `./gradlew test` → PR → 사용자 머지 결정 → **머지 = main push = 자동 배포**(`deploy.yml`이 테스트 게이트 → ECR → SSM으로 `deploy-on-ec2.sh` 실행 → `/health` 200 확인) → `PUT` 스모크(옛 클라 블롭 200 · `usage` 포함 블롭 200).
 
 **PR ②(클라 · 브랜치 `feat/usage-log`)** — 예상 순증 ~150줄(테스트 제외) · 테스트 ~23건. **①이 라이브인 뒤에 머지한다.**
 1. Red: §5의 1~23을 먼저 쓰고 실패를 본다(타입 에러도 Red다).
