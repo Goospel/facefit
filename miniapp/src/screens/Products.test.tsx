@@ -741,3 +741,51 @@ describe('제품 삭제', () => {
     expect(onChange).not.toHaveBeenCalled();
   });
 });
+
+describe('날짜는 오늘까지다 — 미래는 기록이 아니다', () => {
+  it('시작일 칸은 오늘까지만 고를 수 있다', () => {
+    setup();
+    fireEvent.click(btn('제품 추가'));
+    expect(screen.getByLabelText('시작일').getAttribute('max')).toBe(TODAY);
+  });
+
+  it('종료일 칸은 시작일부터 오늘까지다', () => {
+    setup([p({ startDate: '2026-08-01' })]);
+    fireEvent.click(btn('토너 수정'));
+    const end = screen.getByLabelText('종료일');
+    expect(end.getAttribute('min')).toBe('2026-08-01');
+    expect(end.getAttribute('max')).toBe(TODAY);
+  });
+
+  it('시작일이 미래면 저장할 수 없다 — 카드에 「-6일째」가 서던 구멍', () => {
+    setup();
+    fireEvent.click(btn('제품 추가'));
+    fireEvent.change(screen.getByLabelText('제품 이름'), { target: { value: '수분크림' } });
+    fireEvent.change(screen.getByLabelText('시작일'), { target: { value: '2026-09-04' } });
+    expect(btn('저장').disabled).toBe(true);
+
+    fireEvent.change(screen.getByLabelText('시작일'), { target: { value: TODAY } });
+    expect(btn('저장').disabled).toBe(false);
+  });
+
+  it('종료일이 시작일보다 앞이거나 미래면 저장할 수 없다', () => {
+    setup([p({ startDate: '2026-08-01' })]);
+    fireEvent.click(btn('토너 수정'));
+    fireEvent.change(screen.getByLabelText('종료일'), { target: { value: '2026-07-31' } });
+    expect(btn('저장').disabled).toBe(true);
+
+    fireEvent.change(screen.getByLabelText('종료일'), { target: { value: '2026-09-04' } });
+    expect(btn('저장').disabled).toBe(true);
+
+    fireEvent.change(screen.getByLabelText('종료일'), { target: { value: '2026-08-10' } });
+    expect(btn('저장').disabled).toBe(false);
+  });
+
+  it('시작일을 비우면 저장할 수 없다 — 빈 날짜는 저장소가 다시 읽을 때 조용히 버린다', () => {
+    setup();
+    fireEvent.click(btn('제품 추가'));
+    fireEvent.change(screen.getByLabelText('제품 이름'), { target: { value: '수분크림' } });
+    fireEvent.change(screen.getByLabelText('시작일'), { target: { value: '' } });
+    expect(btn('저장').disabled).toBe(true);
+  });
+});
