@@ -259,8 +259,16 @@ function BackupToggle({
           gap: 12,
           width: '100%',
           textAlign: 'left',
-          // 켜진 행은 톤까지 바뀐다 — 51px 스위치를 안 봐도 **행 전체**가 켜졌다고 말한다.
-          ...(enabled ? { background: 'var(--blue-soft)', borderColor: 'var(--blue-soft)' } : null),
+          /*
+            켜진 행은 톤까지 바뀐다 — 51px 스위치를 안 봐도 **행 전체**가 켜졌다고 말한다.
+
+            ⚠️ `ui.card`가 shorthand `border`를 쓰므로 여기서도 **shorthand로 갈아 끼운다**
+            (`History.tsx` `cellStyle`과 같은 방식). `borderColor`만 덮으면 shorthand 혼용이라
+            켜짐→꺼짐 전환에서 React가 border를 통째로 지운다 — 「Removing a style property
+            during rerender」 경고와 함께 테두리가 사라진다(리뷰 2026-09-02 실측).
+          */
+          background: enabled ? 'var(--blue-soft)' : 'var(--bg-sub)',
+          border: enabled ? '1px solid var(--blue-soft)' : '1px solid var(--line)',
         }}
       >
         <span style={{ flex: 1 }}>
@@ -299,13 +307,14 @@ function BackupToggle({
               borderColor: enabled ? 'var(--blue)' : 'var(--line-strong)',
             }}
           >
+            {/* `data-mark`는 계측기의 손잡이다 — 표식을 지우면 테스트가 죽는다(History.tsx와 같은 이디엄). */}
             {enabled ? (
-              <span style={{ ...markStyle, left: 8, color: '#fff' }}>
+              <span data-mark="on" style={{ ...markStyle, left: 8, color: '#fff' }}>
                 <Icon name="check" size={13} />
               </span>
             ) : (
               // 빈 원. 켜짐의 체크와 짝이 되는 「아직 아무것도 아님」의 표식이다.
-              <span style={{ ...markStyle, right: 6, ...emptyMarkStyle }} />
+              <span data-mark="off" style={{ ...markStyle, right: 6, ...emptyMarkStyle }} />
             )}
             <span
               style={{

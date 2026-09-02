@@ -129,8 +129,8 @@ const btn = (name: string) => screen.getByRole('button', { name }) as HTMLButton
  * 프리뷰 컨트롤 한 줄의 두 칩. **셔터는 화면에서 유일한 큰 버튼**이고, 「3초 뒤에 찍을까」와
  * 「겹쳐 볼까」는 셔터가 아니라 **셔터의 설정**이라 스위치다(UX 1차 §4).
  */
-const timerSwitch = () => screen.getByRole('switch', { name: '3초 타이머' });
-const ghostSwitch = () => screen.getByRole('switch', { name: '겹쳐 보기' });
+const timerSwitch = () => screen.getByRole('switch', { name: '3초' });
+const ghostSwitch = () => screen.getByRole('switch', { name: '겹치기' });
 
 /**
  * `IDBDatabase.close`를 지켜본다. **프로토타입에 건다** — 화면이 연 연결의 핸들은 밖에서
@@ -265,9 +265,9 @@ describe('촬영 화면 — 첫 촬영(사진 0장)', () => {
 
     // `visibility: hidden`은 **접근성 트리에서도 빠진다** — 스크린리더에게도 안 들리는 것이
     // 맞다(겹칠 사진이 없어 켤 수 없는 스위치다). 그래서 역할이 아니라 DOM으로 집어 든다.
-    expect(screen.queryByRole('switch', { name: '겹쳐 보기' })).toBeNull();
+    expect(screen.queryByRole('switch', { name: '겹치기' })).toBeNull();
     // 통째로 빼 버리면 여기서 null이라 터진다 — 「자리는 지킨다」를 재는 것이 이 줄이다.
-    const ghost = container.querySelector('[aria-label="겹쳐 보기"]')!;
+    const ghost = container.querySelector('[aria-label="겹치기"]')!;
     expect(ghost.getAttribute('style')).toContain('visibility: hidden');
   });
 });

@@ -75,8 +75,8 @@
 
 - 컨테이너: `display: flex; align-items: center; justify-content: space-between; margin-top: 12px`.
 - **셔터**(가운데): `<button aria-label="촬영">` · 76×76 · `borderRadius: 999` · 배경 투명 · 4px 흰 테두리 · `padding: 4` · 안에 흰 원(`flex: 1; borderRadius: 999; background: #fff`). `disabled={busy}`. **화면에서 유일하게 큰 버튼**이다.
-- **타이머 칩**(왼쪽): `role="switch"` `aria-checked={timerOn}` `aria-label="3초 타이머"`. 보이는 글자 「3초 켜짐」/「3초 꺼짐」 + `timer` 아이콘 16px.
-- **겹쳐 보기 칩**(오른쪽): `role="switch"` `aria-checked={ghostOn}` `aria-label="겹쳐 보기"`. 보이는 글자 「겹치기 켜짐」/「겹치기 꺼짐」 + `layers` 아이콘 16px. **`baseline`이 없으면 `visibility: hidden`으로 자리만 지킨다**(셔터가 가운데 서야 한다). 이 칩이 기존 `ghostOn` 토글의 후신이다.
+- **타이머 칩**(왼쪽): `role="switch"` `aria-checked={timerOn}` `aria-label="3초"`. 보이는 글자 「3초 켜짐」/「3초 꺼짐」 + `timer` 아이콘 16px.
+- **겹쳐 보기 칩**(오른쪽): `role="switch"` `aria-checked={ghostOn}` `aria-label="겹치기"`. 보이는 글자 「겹치기 켜짐」/「겹치기 꺼짐」 + `layers` 아이콘 16px. **`baseline`이 없으면 `visibility: hidden`으로 자리만 지킨다**(셔터가 가운데 서야 한다). 이 칩이 기존 `ghostOn` 토글의 후신이다.
 - 칩 스타일(둘 공통): `display: flex; alignItems: center; gap: 5; padding: 8px 11px; fontSize: 13; fontWeight: 600; whiteSpace: nowrap; borderRadius: 999`. 꺼짐 = 배경 투명 · 1px `#3a3f47` 테두리 · 글자 `#b0b8c1`. 켜짐 = 배경 `var(--blue)` · 테두리 `var(--blue)` · 글자 `#fff`. 테두리는 분리 속성으로.
 
 ### 4-2. 동작
@@ -90,7 +90,7 @@
 
 - `btn('촬영')`은 그대로 셔터를 잡는다(접근성 이름 유지).
 - 「3초 후 촬영」 테스트 → 「3초 타이머」 스위치를 켠 뒤 「촬영」을 눌러 카운트다운이 도는지, **안 켜면 즉시 플래시**인지 둘 다.
-- 「고스트 끄기/켜기」 → `getByRole('switch', { name: '겹쳐 보기' })`의 `aria-checked` 토글 + 고스트 img 유무.
+- 「고스트 끄기/켜기」 → `getByRole('switch', { name: '겹치기' })`의 `aria-checked` 토글 + 고스트 img 유무.
 - 첫 촬영(사진 0장)에서는 「겹쳐 보기」 스위치가 **보이지 않아야** 한다(`visibility: hidden` — `toBeVisible()` 대신 style 단언이라도 좋다).
 
 ---

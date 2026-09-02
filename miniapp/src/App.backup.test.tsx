@@ -299,6 +299,47 @@ describe('백업 스위치 — 제품 탭 상시', () => {
     expect(within(screen.getByRole('switch')).getByText('켜짐')).toBeTruthy();
   });
 
+  it('트랙 안에도 표식이 있다 — 색과 글자가 안 보여도 체크/빈 원으로 갈린다', () => {
+    render(<App />);
+    goProducts();
+
+    // 빈 원(꺼짐)과 체크(켜짐)는 짝이다 — 한쪽만 지워도 여기서 죽는다.
+    expect(screen.getByRole('switch').querySelector('[data-mark="off"]')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('switch'));
+
+    expect(screen.getByRole('switch').querySelector('[data-mark="on"]')).toBeTruthy();
+  });
+
+  it('스위치 그림과 상태 글자는 낭독에서 빠진다 — aria-checked가 이미 말한 것을 두 번 읽지 않는다', () => {
+    render(<App />);
+    goProducts();
+
+    expect(within(screen.getByRole('switch')).getByText('꺼짐').closest('[aria-hidden]')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('switch'));
+
+    expect(within(screen.getByRole('switch')).getByText('켜짐').closest('[aria-hidden]')).toBeTruthy();
+  });
+
+  /*
+    ⚠️ **첫 렌더만 보는 단언은 이 회귀를 못 잡는다.** 켜짐 톤을 `borderColor`만 덮어 넣었더니
+    `ui.card`의 shorthand `border`와 섞여, 끄는 순간 React가 border를 **통째로 지웠다**
+    (「Removing a style property during rerender」 · 리뷰 2026-09-02 실측). 켜진 화면도 꺼진
+    화면도 각각은 멀쩡해 보이고, **전환한 뒤에만** 테두리가 없다.
+  */
+  it('껐다 켰다 해도 테두리가 살아 있다 — shorthand를 shorthand로 갈아 끼운다', () => {
+    localStorage.setItem('facefit.backupEnabled', '1');
+
+    render(<App />);
+    goProducts();
+    expect(screen.getByRole('switch').getAttribute('style')).toContain('var(--blue-soft)');
+
+    fireEvent.click(screen.getByRole('switch'));
+
+    expect(screen.getByRole('switch').getAttribute('style')).toContain('1px solid var(--line)');
+  });
+
   it('아래 줄이 상태로 시작한다 — 스위치를 못 알아봐도 첫 두 글자로 안다', () => {
     render(<App />);
     goProducts();

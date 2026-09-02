@@ -576,11 +576,18 @@ export function FacePhoto({
             「3초 뒤에 찍을까」와 「겹쳐 볼까」는 셔터가 아니라 **셔터의 설정**이라 칩으로 내렸다.
           */}
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 12 }}>
-            {/* 폰을 기대 세우고 물러서면 버튼에 손이 안 닿는다 — 그때 켜는 스위치다. */}
+            {/*
+              폰을 기대 세우고 물러서면 버튼에 손이 안 닿는다 — 그때 켜는 스위치다.
+
+              ⚠️ 접근성 이름은 **보이는 글자 안에 들어 있어야 한다**(WCAG 2.5.3 Label in Name).
+              「3초 타이머」로 두면 화면에는 「3초 꺼짐」이라 적혀 있는데 음성 조작 사용자가
+              「3초 타이머」라고 불러야 눌린다 — 보이는 대로 말한 사람만 실패한다. 상태
+              (「켜짐/꺼짐」)는 `aria-checked`가 말하므로 이름에 안 넣는다.
+            */}
             <button
               role="switch"
               aria-checked={timerOn}
-              aria-label="3초 타이머"
+              aria-label="3초"
               // ⚠️ 칩은 `busy` 중에도 살아 있다 — 상태를 바꾸는 것은 촬영을 방해하지 않는다.
               onClick={() => setTimerOn(!timerOn)}
               style={chipStyle(timerOn)}
@@ -604,7 +611,7 @@ export function FacePhoto({
             <button
               role="switch"
               aria-checked={ghostOn}
-              aria-label="겹쳐 보기"
+              aria-label="겹치기"
               onClick={() => setGhostOn(!ghostOn)}
               style={{ ...chipStyle(ghostOn), ...(baseline ? null : { visibility: 'hidden' as const }) }}
             >

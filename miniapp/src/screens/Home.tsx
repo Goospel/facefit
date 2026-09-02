@@ -1,7 +1,6 @@
 import { useState, type CSSProperties } from 'react';
 
 import { Icon } from '../components/Icon';
-
 import { isActive, sortProducts } from '../logic/products';
 import { isNotifySupported, requestNotifyAgreement, type NotifyResult } from '../notify';
 import { VERDICT_KO, type Notes, type Product } from '../storage';
