@@ -15,6 +15,9 @@ import { usePhotos } from './usePhotos';
  * **지금 쓰는 것과 끝낸 것을 눈으로 가르는 것**이 이 탭에 오는 이유다. 한 줄로 섞어 놓으면
  * 「내가 지금 뭘 쓰고 있나」를 사람이 매번 날짜로 재구성해야 한다.
  *
+ * **v4-1부터 이 탭이 첫 화면이다.** 맨 위 상태 줄이 「오늘 찍었나」에 사진 없이 답하고,
+ * 카드는 읽는 카드(카드 자체가 버튼)다 — 수정·종료·삭제는 폼 안에 산다.
+ *
  * 검색은 안 만든다 — 개인 목록은 수십 개를 넘지 않는다(설계 §5-2). 날짜는 네이티브
  * `<input type="date">`가 받는다. 달력 위젯을 손으로 만들 이유가 없다.
  */
@@ -289,29 +292,40 @@ const md = (d: string) => `${Number(d.slice(5, 7))}월 ${Number(d.slice(8))}일`
  *
  * ⚠️ 접근성 이름은 `${name} 수정` 한 마디다 — 본문을 이어 붙이면 스크린리더가 칩까지 버튼
  * 이름으로 읽는다.
+ *
+ * ⚠️ 다만 `aria-label`은 이름을 **대체**한다 — 그대로 두면 스크린리더가 「토너 수정」 한 마디만
+ * 듣고 며칠째인지는 못 듣는다(리뷰 2026-09-02). `aria-describedby`로 숫자 블록과 본문을
+ * **설명**으로 잇는다 — 이름은 그대로라 `getByRole('button', { name })` 계측기가 안 흔들린다.
  */
 function Card({ product, date, onEdit }: { product: Product; date: string; onEdit: (p: Product) => void }) {
   const using = isActive(product, date);
   const ended = product.endDate;
   const days = daysBetween(product.startDate, ended ?? date) + 1;
+  // 문서 안 다른 id와 부딪히지 않게 접두어를 단다. 순서가 곧 읽히는 순서다 — 「29 일째 토너 …」.
+  const bodyId = `product-${product.id}`;
+  const daysId = `${bodyId}-days`;
   return (
     <button
       aria-label={`${product.name} 수정`}
+      aria-describedby={`${daysId} ${bodyId}`}
       onClick={() => onEdit(product)}
       style={{ ...ui.card, padding: 12, display: 'flex', alignItems: 'center', gap: 12, width: '100%', textAlign: 'left' }}
     >
       <span
+        id={daysId}
         style={{
           ...dayBlockStyle,
           background: using ? 'var(--blue-soft)' : 'var(--bg-sub)',
           borderColor: using ? 'var(--blue-soft)' : 'var(--line)',
-          color: using ? 'var(--blue)' : 'var(--text-sub)',
+          // ⚠️ `--blue`는 `--blue-soft` 위에서 3.3:1이라 16px/700(= 보통 글자) AA 4.5:1에 못 미친다.
+          // `--blue-dark`가 4.8:1이다.
+          color: using ? 'var(--blue-dark)' : 'var(--text-sub)',
         }}
       >
         <span style={{ fontSize: 16, fontWeight: 700, lineHeight: 1.1 }}>{days}</span>
         <span style={{ fontSize: 10, lineHeight: 1.1 }}>{ended ? '일' : '일째'}</span>
       </span>
-      <span style={{ flex: 1, minWidth: 0 }}>
+      <span id={bodyId} style={{ flex: 1, minWidth: 0 }}>
         <b style={{ display: 'block', fontSize: 15, color: using ? 'var(--text)' : 'var(--text-sub)' }}>{product.name}</b>
         <span style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginTop: 6 }}>
           <span style={ui.chip}>{CATEGORY_KO[product.category]}</span>
@@ -368,8 +382,8 @@ function MfdsMeta({ m }: { m: MfdsSnapshot }) {
 }
 
 /**
- * 추가·수정 겸용 인라인 폼. 둘을 가르는 것은 **종료일 칸의 유무**뿐이다 —
- * 추가하면서 이미 끝난 제품을 넣는 일은 드물어서 그때는 칸을 안 연다.
+ * 추가·수정 겸용 인라인 폼. 둘을 가르는 것은 **종료일 칸과 종료·삭제 줄의 유무**다 —
+ * 추가하면서 이미 끝난 제품을 넣는 일은 드물고, 아직 없는 제품을 종료·삭제할 수도 없다.
  */
 function ProductForm({
   initial,

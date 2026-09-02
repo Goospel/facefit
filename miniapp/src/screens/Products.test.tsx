@@ -79,8 +79,11 @@ describe('오늘 상태 줄 — 사진은 그리지 않는다', () => {
 
   it('찍었으면 관찰 답을 말하고, 오른쪽은 「다시 찍기」다', async () => {
     const { onShoot } = setup([], { photos: [TODAY], notes: { [TODAY]: 'better' } });
+    // ⚠️ `findByText`로 재면 **DB가 열리기 전 첫 프레임**에서도 해소돼 「안 찍었어요」를 통과시킨다.
+    // 한 틱 흘린 뒤 `getByText`로 단정해야 `shot` 반전이 여기서 죽는다(리뷰 2026-09-02).
+    await flush();
 
-    expect(await screen.findByText('오늘 찍었어요')).toBeTruthy();
+    expect(screen.getByText('오늘 찍었어요')).toBeTruthy();
     expect(screen.getByText('좋아졌어요')).toBeTruthy();
     fireEvent.click(btn('오늘 얼굴 다시 찍기'));
     expect(onShoot).toHaveBeenCalledTimes(1);
@@ -88,7 +91,8 @@ describe('오늘 상태 줄 — 사진은 그리지 않는다', () => {
 
   it('찍었는데 답이 없으면 오늘 탭을 가리킨다 — 「미응답」을 적으면 건너뛴 것이 실패로 보인다', async () => {
     setup([], { photos: [TODAY] });
-    expect(await screen.findByText("'오늘' 탭에서 볼 수 있어요")).toBeTruthy();
+    await flush();
+    expect(screen.getByText("'오늘' 탭에서 볼 수 있어요")).toBeTruthy();
   });
 
   it('어제 사진은 오늘 사진이 아니다', async () => {
@@ -99,8 +103,18 @@ describe('오늘 상태 줄 — 사진은 그리지 않는다', () => {
 
   it('어느 상태에도 <img>가 없다 — 얼굴은 부르기 전엔 안 보인다', async () => {
     const { container } = setup([], { photos: [TODAY], notes: { [TODAY]: 'same' } });
-    await screen.findByText('오늘 찍었어요');
+    await flush();
+    // 「찍은 상태에 도달했다」를 먼저 못박는다 — 이게 없으면 사진이 안 실린 첫 프레임에서
+    // `<img>`가 없는 것을 재고 끝나, 정작 재려던 상태를 안 밟는다.
+    expect(screen.getByText('오늘 찍었어요')).toBeTruthy();
     expect(container.querySelector('img')).toBeNull();
+  });
+
+  it('폼이 열려 있어도 상태 줄은 그대로 있다 — 사라졌다 나타나면 화면이 흔들린다', async () => {
+    setup([p()]);
+    await flush();
+    fireEvent.click(btn('제품 추가'));
+    expect(btn('오늘 얼굴 찍기')).toBeTruthy();
   });
 });
 
@@ -232,6 +246,15 @@ describe('카드의 식약처 메타', () => {
       expect(textAll.includes(claim), claim).toBe(false);
     }
   });
+
+  it('메타 줄 순서는 카테고리 → 업소명 → 기능성 → SPF/PA다', () => {
+    // 설계 §3-3. 카테고리가 제일 왼쪽에 서야 「무슨 종류인가」가 먼저 읽힌다.
+    setup([p({ category: 'sunscreen', mfds: meta() })]);
+    const text = within(screen.getByTestId('section-active')).getByText('선크림').parentElement?.textContent ?? '';
+    const order = ['선크림', '데이셀코스메틱(주)', '미백', 'SPF50+ PA++++'].map((s) => text.indexOf(s));
+    expect(order.every((i) => i >= 0)).toBe(true);
+    expect([...order].sort((a, b) => a - b)).toEqual(order);
+  });
 });
 
 describe('「제품 추가」 버튼은 늘 0개 또는 1개다', () => {
@@ -323,6 +346,18 @@ describe('카드 — 읽는 카드', () => {
     fireEvent.click(btn('토너 수정'));
 
     expect(screen.getByLabelText('제품 이름')).toBeTruthy();
+  });
+
+  it('카드 이름은 「수정」 한 마디지만, 며칠째·이름·칩은 설명으로 읽힌다 — aria-label이 내용을 삼키지 않게', () => {
+    setup([p({ startDate: '2026-08-01' })]);
+    const card = btn('토너 수정');
+    const described = (card.getAttribute('aria-describedby') ?? '')
+      .split(' ')
+      .map((id) => document.getElementById(id)?.textContent ?? '')
+      .join(' ');
+    expect(described).toContain('29');
+    expect(described).toContain('일째');
+    expect(described).toContain('토너');
   });
 });
 
