@@ -79,6 +79,13 @@ export type Product = {
 export const VERDICTS = ['better', 'same', 'worse'] as const;
 export type Verdict = (typeof VERDICTS)[number];
 
+/**
+ * 관찰 답의 표시 문구. **촬영 화면의 버튼 라벨과 같은 말이라야** 「내가 뭘 눌렀지」가 성립한다.
+ * 어휘(`VERDICTS`) 곁에 **한 벌만** 둔다 — Home·History가 각자 사본을 들고 있었고(v4-1에서 통합),
+ * 사본이 둘이면 문구를 다듬는 순간 한쪽이 조용히 낡는다.
+ */
+export const VERDICT_KO: Record<Verdict, string> = { better: '좋아졌어요', same: '그대로예요', worse: '나빠졌어요' };
+
 /** 하루 1개. 사진과 **독립 저장**이다 — 사진을 지워도 관찰은 남는다(설계 §4-3). */
 export type Notes = Record<string, Verdict>;
 
