@@ -29,6 +29,8 @@ final class BlobValidator {
 	static final int MAX_PRODUCTS = 200;
 	/** 하루 1키라 10년치가 넘는다. */
 	static final int MAX_NOTES = 4_000;
+	/** 사용 기록도 사진 날짜 1키라 {@link #MAX_NOTES}와 같은 논리·같은 수다(v4-2 설계 §4-1). */
+	static final int MAX_USAGE_DAYS = 4_000;
 	/** 스키마의 VARCHAR(32)와 짝. 안 막으면 DB가 500으로 거절한다 — 400이어야 할 것이 500이 되면 안 된다. */
 	static final int MAX_CLIENT_SAVED_AT_CHARS = 32;
 
@@ -37,7 +39,7 @@ final class BlobValidator {
 	 * 사진이든 뭐든 새 키에 담아 보내면 그만이다.
 	 */
 	private static final Set<String> ALLOWED_TOP_LEVEL =
-			Set.of("schemaVersion", "products", "notes", "clientSavedAt");
+			Set.of("schemaVersion", "products", "notes", "usage", "clientSavedAt");
 
 	private BlobValidator() {
 	}
@@ -90,6 +92,18 @@ final class BlobValidator {
 			}
 			if (notes.size() > MAX_NOTES) {
 				throw new InvalidBlobException("notes가 " + MAX_NOTES + "키를 넘는다");
+			}
+		}
+
+		// 안은 안 본다 — 배열의 유무(키 없음 / `[]` / `[id…]`)가 클라의 3상이고, 서버가 그걸
+		// 해석하면 클라가 뜻을 넓힐 때마다 서버가 따라 바뀐다(products 항목을 불투명하게 두는 것과 같은 규율).
+		JsonNode usage = root.get("usage");
+		if (usage != null && !usage.isNull()) {
+			if (!usage.isObject()) {
+				throw new InvalidBlobException("usage가 객체가 아니다");
+			}
+			if (usage.size() > MAX_USAGE_DAYS) {
+				throw new InvalidBlobException("usage가 " + MAX_USAGE_DAYS + "키를 넘는다");
 			}
 		}
 

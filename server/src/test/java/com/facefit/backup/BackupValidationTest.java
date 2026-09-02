@@ -123,6 +123,40 @@ class BackupValidationTest {
 	}
 
 	@Test
+	@DisplayName("usage가 있는 블롭은 200 — 새 클라의 사용 기록 키(v4-2 §4-1). 없으면 새 클라의 PUT이 전부 400이다")
+	void accept_usageObject() throws Exception {
+		// `[]`(물어봤고 안 썼다)와 `[id…]`(썼다)가 한 블롭에 같이 온다 — 서버는 둘을 구별하지 않고 통과시킨다.
+		String withUsage = """
+				{"schemaVersion":1,"products":[],"notes":{},\
+				"usage":{"2026-09-01":[],"2026-09-02":["p1"]},\
+				"clientSavedAt":"2026-09-01T00:00:00.000Z"}""";
+
+		putBlob("usage-ok", withUsage).andExpect(status().isOk());
+	}
+
+	@Test
+	@DisplayName("usage가 배열이면 400 — 날짜 키 객체여야 한다(notes와 같은 꼴)")
+	void reject_usageNotObject() throws Exception {
+		String arrayUsage = """
+				{"schemaVersion":1,"products":[],"notes":{},"usage":["2026-09-02"],\
+				"clientSavedAt":"2026-09-01T00:00:00.000Z"}""";
+
+		putBlob("usage-array", arrayUsage).andExpect(status().isBadRequest());
+	}
+
+	@Test
+	@DisplayName("usage가 4,000키를 넘으면 400 — notes와 같은 논리다(하루 1키라 10년치가 넘는다)")
+	void reject_tooManyUsageDays() throws Exception {
+		String usage = IntStream.range(0, 4001)
+				.mapToObj(i -> "\"d" + i + "\":[]")
+				.collect(Collectors.joining(","));
+
+		putBlob("many-usage", "{\"schemaVersion\":1,\"products\":[],\"notes\":{},\"usage\":{" + usage
+				+ "},\"clientSavedAt\":\"2026-09-01T00:00:00.000Z\"}")
+				.andExpect(status().isBadRequest());
+	}
+
+	@Test
 	@DisplayName("JSON이 아니면 400 — 파싱 실패가 500으로 새면 안 된다")
 	void reject_malformedJson() throws Exception {
 		putBlob("malformed", "{\"schemaVersion\":1,").andExpect(status().isBadRequest());
