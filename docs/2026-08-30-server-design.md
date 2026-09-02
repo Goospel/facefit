@@ -527,11 +527,12 @@ v2-2 §3-5의 「낡는 문장을 능동적으로 고친다」 관례 계승:
 GET  /health                    → 200 (모니터링·배포 검증용 — 바디 없음)
 
 PUT  /v1/backup                 X-Anon-Key 필수
-     body { schemaVersion: 1, products: [...], notes: {...}, clientSavedAt: 'ISO' }
+     body { schemaVersion: 1, products: [...], notes: {...}, usage: {...}, clientSavedAt: 'ISO' }
+            (usage는 선택 키 — 옛 클라 블롭은 넷뿐이고 그대로 200. v4-2 설계 §4-1)
      → 200 { savedAt }
-     검증: ① 본문 ≤ 512KB ② 최상위 키 화이트리스트(위 4개 외 → 400)
+     검증: ① 본문 ≤ 512KB ② 최상위 키 화이트리스트(위 5개 외 → 400)
           ③ **재귀 문자열 길이 ≤ 2,000자**(§3-2 불변식의 서버측 집행 — 사진 base64 차단)
-          ④ products ≤ 200건 · notes ≤ 4,000키
+          ④ products ≤ 200건 · notes ≤ 4,000키 · usage ≤ 4,000키(날짜 1키 · 안은 안 본다)
      ⚠️ products 항목 내부는 불투명(opaque)하게 저장한다 — 클라의 미지 필드 보존 규칙
         (v1 §4-2)과 짝. 서버가 제품 필드를 화이트리스트하면 v4 클라 필드가 백업에서 증발한다.
 
