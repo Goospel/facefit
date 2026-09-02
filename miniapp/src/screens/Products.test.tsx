@@ -234,6 +234,28 @@ describe('카드의 식약처 메타', () => {
   });
 });
 
+describe('「제품 추가」 버튼은 늘 0개 또는 1개다', () => {
+  it('제품이 있으면 제목 줄의 글자 버튼 하나다', () => {
+    setup([p()]);
+    const all = screen.getAllByRole('button', { name: '제품 추가' });
+    expect(all).toHaveLength(1);
+    expect(all[0].textContent).toBe('추가');
+  });
+
+  it('비어 있으면 빈 상태 블록의 큰 버튼 하나다 — 첫 사용자가 놓칠 수 없어야 한다', () => {
+    setup();
+    const all = screen.getAllByRole('button', { name: '제품 추가' });
+    expect(all).toHaveLength(1);
+    expect(all[0].textContent).toBe('제품 추가');
+  });
+
+  it('폼이 열리면 없다 — 둘을 동시에 열 수 없다', () => {
+    setup([p()]);
+    fireEvent.click(btn('제품 추가'));
+    expect(screen.queryByRole('button', { name: '제품 추가' })).toBeNull();
+  });
+});
+
 describe('제품 추가', () => {
   function openForm() {
     const r = setup();

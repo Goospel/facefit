@@ -77,11 +77,28 @@ export function Products({
 
   return (
     <main style={ui.page}>
-      <h1 style={ui.h1}>제품</h1>
+      <div style={{ display: 'flex', alignItems: 'center', margin: '4px 0 20px' }}>
+        <h1 style={{ ...ui.h1, margin: 0 }}>제품</h1>
+        <span style={ui.spacer} />
+        {/*
+          추가는 글자 버튼이다(v4-1 §3-5) — 메인 페이지 맨 위를 파란 덩어리가 차지할 이유가 없다.
+          목록이 비면 아래 빈 상태 블록의 큰 버튼이 대신 서고, 폼이 열리면 숨는다 — **언제나 0개
+          또는 1개**다. 접근성 이름은 「제품 추가」로 고정한다(보이는 글자 「추가」를 포함한다).
+        */}
+        {!editing && products.length > 0 && (
+          <button
+            aria-label="제품 추가"
+            style={{ ...ui.ghost, color: 'var(--blue)', fontWeight: 600, fontSize: 15 }}
+            onClick={() => setEditing('new')}
+          >
+            추가
+          </button>
+        )}
+      </div>
 
       <TodayStrip shot={Boolean(todayPhoto)} verdict={notes[date]} onShoot={onShoot} />
 
-      {editing ? (
+      {editing && (
         <ProductForm
           initial={editing === 'new' ? null : editing}
           today={date}
@@ -90,16 +107,15 @@ export function Products({
           onEnd={editing === 'new' ? undefined : () => endToday(editing)}
           onRemove={editing === 'new' ? undefined : () => remove(editing)}
         />
-      ) : (
-        <button style={ui.primary} onClick={() => setEditing('new')}>
-          제품 추가
-        </button>
       )}
 
       {products.length === 0 && !editing && (
         <div style={ui.empty}>
           <p style={{ margin: 0 }}>아직 등록한 제품이 없어요.</p>
           <p style={{ fontSize: 13, margin: '4px 0 0' }}>쓰고 있는 것을 등록하면 사진과 함께 기간이 남아요.</p>
+          <button style={{ ...ui.primary, marginTop: 16 }} onClick={() => setEditing('new')}>
+            제품 추가
+          </button>
         </div>
       )}
 
