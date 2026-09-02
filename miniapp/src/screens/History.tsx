@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 
+import { Icon } from '../components/Icon';
 import { addMonth, formatYm, monthCells, monthOf, type Ym } from '../logic/calendar';
 import { clearPhotos, deletePhoto, type FacePhoto, type PhotoDb } from '../photoStore';
 import { todayKey, VERDICT_KO, type Notes, type Verdict } from '../storage';
@@ -65,7 +66,14 @@ export function History({
     <main style={ui.page}>
       <h1 style={ui.h1}>기록</h1>
 
-      <div style={ui.card}>
+      {/*
+        이 앱의 **보상**(얼굴이 어떻게 달라졌나)이 맨 위에 선다(v4-2 UX 2차 §4-1). 달력 밑
+        회색 「재생」에 묻혀 있던 데다 바로 아래가 빨간 「사진 모두 삭제」라, 보상과 파괴가 한
+        덩어리로 읽혔다.
+      */}
+      <ChangeCard photos={photos} onOpen={onOpenTimelapse} />
+
+      <div style={{ ...ui.card, marginTop: 16 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
           <button style={arrow} aria-label="지난달" onClick={() => setYm((v) => addMonth(v, -1))}>
             ‹
@@ -145,7 +153,13 @@ export function History({
 
       <p style={{ ...ui.sub, margin: '12px 0 0', textAlign: 'center' }}>{`${ym.month}월 · ${shotDays}일 찍음`}</p>
 
-      <TimelapseRow photos={photos} onOpen={onOpenTimelapse} />
+      {/*
+        1장이면 왜 아직인지 **달력 아래 이 자리에서** 말한다 — 누를 수 없는 것을 맨 위에 올릴
+        이유가 없다. 「재생」을 눌렀더니 정지 화면 하나가 뜨는 것보다 낫다.
+      */}
+      {photos.length === 1 && (
+        <p style={{ ...ui.sub, margin: '16px 0 0', textAlign: 'center' }}>사진이 2장 모이면 재생할 수 있어요.</p>
+      )}
 
       <p style={{ ...ui.sub, marginTop: 24, marginBottom: 8 }}>{LOCAL_ONLY}</p>
 
@@ -155,9 +169,13 @@ export function History({
         「앱을 지우세요」밖에 답할 말이 없다.
       */}
       {db && photos.length > 0 && (
-        <button style={{ ...ui.ghost, color: 'var(--red)' }} onClick={() => void removeAll(db)}>
-          사진 모두 삭제
-        </button>
+        <>
+          {/* 보상(맨 위 재생)과 파괴를 갈라 놓는 선. 둘이 붙어 있으면 한 덩어리로 읽힌다. */}
+          <hr style={{ border: 0, borderTop: '1px solid var(--line)', margin: '24px 0 16px' }} />
+          <button style={{ ...ui.ghost, color: 'var(--red)' }} onClick={() => void removeAll(db)}>
+            사진 모두 삭제
+          </button>
+        </>
       )}
 
       {selected && (
@@ -244,41 +262,49 @@ function DayPhoto({ date, blob }: { date: string; blob: Blob }) {
 }
 
 /**
- * 타임랩스로 가는 **유일한 문**.
+ * 변화 보기 카드(v4-2 UX 2차 §4-1) — 타임랩스로 가는 **유일한 문**.
  *
- * 사진이 0장이면 로우 자체가 없다 — 빈 화면으로 보내는 버튼을 만들지 않는다.
- * 1장이면 왜 아직인지 말한다 — 「재생」을 눌렀더니 정지 화면 하나가 뜨는 것보다 낫다.
+ * 2장 미만이면 카드 자체가 없다 — 빈 화면(또는 정지 화면 한 장)으로 보내는 버튼을 만들지
+ * 않는다. 1장일 때 왜 아직인지 말하는 줄은 **달력 아래**가 맡는다.
+ *
+ * 아래 줄이 「최근 며칠」이 아니라 **기간**인 이유: 타임랩스가 보여 주는 것이 기간이다.
  */
-function TimelapseRow({ photos, onOpen }: { photos: FacePhoto[]; onOpen: () => void }) {
+function ChangeCard({ photos, onOpen }: { photos: FacePhoto[]; onOpen: () => void }) {
   // 거는 얼굴은 **최신**이다. 기준(가장 오래된 것)을 걸면 몇 달 전 얼굴이 계속 걸려 있다.
   const latest = photos[photos.length - 1];
+  // ⚠️ 훅은 조건 앞에 선다 — 아래 이른 반환보다 뒤로 가면 렌더마다 훅 수가 달라진다.
   const thumbUrl = useObjectUrl(latest?.blob);
-  if (!latest) return null;
-
-  if (photos.length < 2) {
-    return <p style={{ ...ui.sub, margin: '16px 0 0', textAlign: 'center' }}>사진이 2장 모이면 재생할 수 있어요.</p>;
-  }
-
-  const [, m, d] = latest.date.split('-');
+  if (photos.length < 2) return null;
 
   return (
-    <div style={{ ...ui.card, display: 'flex', alignItems: 'center', gap: 12, marginTop: 16, padding: 12 }}>
+    <div style={{ ...ui.card, display: 'flex', alignItems: 'center', gap: 12, padding: 12 }}>
       {thumbUrl ? (
         <img
           src={thumbUrl}
           alt="최근 얼굴 사진"
-          style={{ width: 40, height: 52, objectFit: 'cover', borderRadius: 8, background: 'var(--bg-sub)' }}
+          style={{ width: 56, height: 72, objectFit: 'cover', borderRadius: 8, background: 'var(--bg-sub)' }}
         />
       ) : null}
-      <span style={{ flex: 1, fontSize: 13, color: 'var(--text-sub)' }}>
-        {`사진 ${photos.length}장 · 최근 ${Number(m)}/${Number(d)}`}
+      <span style={{ flex: 1 }}>
+        <span style={{ display: 'block', fontSize: 15, fontWeight: 600 }}>얼굴 변화 보기</span>
+        <span style={{ display: 'block', fontSize: 13, marginTop: 2, color: 'var(--text-sub)' }}>
+          {`${photos.length}장 · ${md(photos[0].date)} ~ ${md(latest.date)}`}
+        </span>
       </span>
-      <button style={{ ...ui.secondary, width: 'auto', padding: '9px 16px' }} onClick={onOpen}>
+      {/* 이 화면의 유일한 파란 버튼이다(UX 1차 「파란 버튼은 하나」). */}
+      <button
+        style={{ ...ui.primary, width: 'auto', display: 'flex', alignItems: 'center', gap: 6, padding: '11px 16px', fontSize: 15, borderRadius: 999 }}
+        onClick={onOpen}
+      >
+        <Icon name="play" size={16} />
         재생
       </button>
     </div>
   );
 }
+
+/** `8월 1일`. 연도는 안 적는다 — 같은 줄이 길어지기만 한다(`Products.tsx`의 같은 규칙). */
+const md = (d: string) => `${Number(d.slice(5, 7))}월 ${Number(d.slice(8))}일`;
 
 const grid: React.CSSProperties = { display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 2, marginTop: 12 };
 

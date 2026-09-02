@@ -3,6 +3,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { IDBFactory } from 'fake-indexeddb';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { monthOf } from '../logic/calendar';
 import { clearPhotos, deletePhoto, listPhotos, type FacePhoto as Photo } from '../photoStore';
 import { todayKey, type Notes } from '../storage';
 import { History } from './History';
@@ -196,6 +197,13 @@ describe('사진 모두 삭제', () => {
     await screen.findByText(/사진은 이 기기에만 저장되며/);
     expect(screen.queryByRole('button', { name: '사진 모두 삭제' })).toBeNull();
   });
+
+  it('구분선으로 격리한다 — 보상(재생)과 파괴(삭제)가 한 덩어리로 읽히면 안 된다', async () => {
+    setup({ photos: [day(3)] });
+    const remove = await screen.findByRole('button', { name: '사진 모두 삭제' });
+
+    expect(remove.previousElementSibling?.tagName).toBe('HR');
+  });
 });
 
 describe('타임랩스 입구', () => {
@@ -207,9 +215,25 @@ describe('타임랩스 입구', () => {
     expect(onOpenTimelapse).toHaveBeenCalled();
   });
 
-  it('몇 장인지 적는다', async () => {
+  it('몇 장인지와 **기간**을 적는다 — 타임랩스가 보여 주는 것이 기간이다', async () => {
+    const { month } = monthOf(today);
     setup({ photos: [day(3), day(4)] });
-    expect(await screen.findByText(/사진 2장/)).toBeTruthy();
+    expect(await screen.findByText(`2장 · ${month}월 3일 ~ ${month}월 4일`)).toBeTruthy();
+  });
+
+  it('변화 보기 카드가 달력 **앞**에 선다 — 이 앱의 보상이 달력 밑에 묻혀 있었다', async () => {
+    setup({ photos: [day(3), day(4)] });
+    const play = await screen.findByRole('button', { name: '재생' });
+
+    const calendar = screen.getByRole('button', { name: '지난달' });
+    expect(play.compareDocumentPosition(calendar) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('「재생」이 이 화면의 파란 버튼이다', async () => {
+    setup({ photos: [day(3), day(4)] });
+    const play = await screen.findByRole('button', { name: '재생' });
+
+    expect(play.style.background).toBe('var(--blue)');
   });
 
   it('사진이 0장이면 카드가 없다 — 빈 화면으로 보내는 버튼을 안 만든다', async () => {

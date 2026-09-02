@@ -20,7 +20,7 @@ import {
   type Verdict,
 } from '../storage';
 import { ui } from '../ui';
-import { usePhotos } from './usePhotos';
+import { LOCAL_ONLY, usePhotos } from './usePhotos';
 
 /**
  * 제품 탭 — 수동 CRUD.
@@ -121,7 +121,13 @@ export function Products({
         )}
       </div>
 
-      <TodayStrip shot={Boolean(todayPhoto)} verdict={notes[date]} onShoot={onShoot} />
+      {/*
+        제품이 있는 사람에게 이 자리는 **오늘 할 일**이다(v4-2 UX 2차 §3-2·§3-3). 0개인 사람의
+        찍기 자리는 첫 진입 카드 안(§3-1)이라 여기서는 안 그린다 — 한 화면에 찍기 버튼이 둘이
+        서면 「어느 쪽을 눌러야 하나」가 된다.
+      */}
+      {products.length > 0 &&
+        (todayPhoto ? <ShotRow verdict={notes[date]} onShoot={onShoot} /> : <ShootCta onShoot={onShoot} />)}
 
       {editing && (
         <ProductForm
@@ -135,13 +141,12 @@ export function Products({
       )}
 
       {products.length === 0 && !editing && (
-        <div style={ui.empty}>
-          <p style={{ margin: 0 }}>아직 등록한 제품이 없어요.</p>
-          <p style={{ fontSize: 13, margin: '4px 0 0' }}>쓰고 있는 것을 등록하면 사진과 함께 기간이 남아요.</p>
-          <button style={{ ...ui.primary, marginTop: 16 }} onClick={() => setEditing('new')}>
-            제품 추가
-          </button>
-        </div>
+        <StartCard
+          shot={Boolean(todayPhoto)}
+          verdict={notes[date]}
+          onAdd={() => setEditing('new')}
+          onShoot={onShoot}
+        />
       )}
 
       {active.length > 0 && (
@@ -177,37 +182,164 @@ export function Products({
 }
 
 /**
- * 오늘 상태 줄(v4-1 §3-2). **사진은 절대 안 그린다** — 이 탭이 첫 화면이 된 이유가 「부르지
- * 않았는데 얼굴이 보인다」였다. 찍었는지와 관찰 답만 말하고, 오른쪽은 행동이다.
+ * 첫 진입 카드(v4-2 UX 2차 §3-1) — 제품 0개, 폼 닫힘.
  *
- * 알림 행·백업 행과 같은 가족(카드 + 가로 flex + 오른쪽 글자). **행 전체가 버튼**이고 두 상태
- * 모두 촬영을 연다 — 「보기」로 오늘 탭에 보내는 안은 한 행에 행동이 둘이라 버렸다. 「다시 찍기」가
- * 덮어쓰기임은 오늘 탭의 같은 문구가 이미 가르친다.
+ * 처음 온 사람은 온보딩에서 「매일 한 장」을 배운 직후인데, 그 전까지 이 화면은 **등록만**
+ * 권하고 찍기는 정보 행처럼 서 있었다 — 둘의 관계를 두 번 읽어야 했다. 이 카드가 할 일
+ * **둘을 번호로** 말한다: ①이 파랗고(지금 할 것) ②는 회색이다.
  *
- * DB가 열리기 전 한 프레임은 「안 찍었어요」로 뜰 수 있다 — 오늘 탭이 첫 화면이던 때와 같은
- * 깜빡임이라 받아들인다.
+ * ②의 버튼 자리는 §3-2·§3-3과 **같은 부품**을 쓴다 — 제품은 없는데 사진부터 찍은 사람에게도
+ * 화면이 거짓말을 안 한다.
  */
-function TodayStrip({ shot, verdict, onShoot }: { shot: boolean; verdict: Verdict | undefined; onShoot: () => void }) {
+function StartCard({
+  shot,
+  verdict,
+  onAdd,
+  onShoot,
+}: {
+  shot: boolean;
+  verdict: Verdict | undefined;
+  onAdd: () => void;
+  onShoot: () => void;
+}) {
+  return (
+    <>
+      <div style={{ ...ui.card, display: 'grid', gap: 16 }}>
+        <b style={{ fontSize: 17, fontWeight: 700 }}>시작은 두 가지면 돼요</b>
+
+        <div style={{ display: 'grid', gap: 8 }}>
+          <Step n={1} now title="쓰는 제품 등록" desc="이름만 적어도 돼요 · 사진과 함께 기간이 남아요" />
+          {/* 화면 유일의 파란 버튼. 헤더 「추가」는 0개일 때 없으므로 「제품 추가」는 여전히 0개 또는 1개다. */}
+          <button style={ui.primary} onClick={onAdd}>
+            제품 추가
+          </button>
+        </div>
+
+        <div style={{ display: 'grid', gap: 8 }}>
+          <Step
+            n={2}
+            title="오늘 얼굴 한 장"
+            /*
+              「파랗게 바뀌어요」는 **약속**이라 참인 동안만 산다 — 등록이 끝나면 §3-2의 파란 CTA가
+              선다. 이미 찍은 사람에게는 그 약속이 거짓이므로(찍은 날은 파란 버튼이 0개다) 그때는
+              같은 자리에서 다른 말을 한다.
+            */
+            desc={shot ? '매일 같은 구도로 · 오늘 몫은 이미 끝냈어요' : '매일 같은 구도로 · 등록이 끝나면 이 버튼이 파랗게 바뀌어요'}
+          />
+          {shot ? <ShotRow verdict={verdict} onShoot={onShoot} /> : <ShootCta onShoot={onShoot} tone="secondary" />}
+        </div>
+      </div>
+
+      {/* 제품 탭이 첫 화면이 된 뒤로 검수자가 처음 보는 화면인데 이 고지가 없었다. */}
+      <p style={{ ...ui.sub, textAlign: 'center', margin: '12px 0 0' }}>{LOCAL_ONLY}</p>
+    </>
+  );
+}
+
+/** 첫 진입 카드의 한 단계. 번호 원은 「지금 할 것」이면 파랗고, 아니면 회색이다. */
+function Step({ n, now = false, title, desc }: { n: number; now?: boolean; title: string; desc: string }) {
+  return (
+    <div style={{ display: 'flex', gap: 10 }}>
+      <span
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          flexShrink: 0,
+          width: 26,
+          height: 26,
+          borderRadius: 999,
+          fontSize: 13,
+          fontWeight: 700,
+          color: now ? '#fff' : 'var(--text-sub)',
+          background: now ? 'var(--blue)' : 'var(--line)',
+        }}
+      >
+        {n}
+      </span>
+      <span>
+        <span style={{ display: 'block', fontSize: 15, fontWeight: 600 }}>{title}</span>
+        <span style={{ display: 'block', fontSize: 13, marginTop: 2, color: 'var(--text-sub)' }}>{desc}</span>
+      </span>
+    </div>
+  );
+}
+
+/**
+ * 찍기 CTA(§3-2) — 이 앱이 매일 원하는 단 하나의 행동.
+ *
+ * v4-1의 상태 줄(카드 + 작은 「찍기」 글자)은 **행동을 정보처럼** 보이게 했다. 버튼 하나로
+ * 바꾸고, 안내 문장(「지난 사진에 얼굴을 겹쳐…」)은 걷었다 — 촬영 화면 첫 줄이 같은 말을 한다.
+ *
+ * `tone`은 첫 진입 카드의 ② 자리에서만 회색이다 — 거기서는 파란 자리가 ①(등록)이라,
+ * 한 화면에 파란 버튼이 둘이 되면 안 된다.
+ */
+function ShootCta({ onShoot, tone = 'primary' }: { onShoot: () => void; tone?: 'primary' | 'secondary' }) {
   return (
     <button
-      aria-label={shot ? '오늘 얼굴 다시 찍기' : '오늘 얼굴 찍기'}
+      // 보이는 글자와 같지만 이름을 명시해 둔다 — 기존 테스트·검수가 이 이름으로 누른다.
+      aria-label="오늘 얼굴 찍기"
       onClick={onShoot}
-      style={{ ...ui.card, display: 'flex', alignItems: 'center', gap: 12, width: '100%', textAlign: 'left', color: 'var(--blue)' }}
+      style={{
+        ...(tone === 'primary' ? ui.primary : ui.secondary),
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 8,
+        padding: '16px 12px',
+        fontSize: 17,
+      }}
     >
-      {/* 오늘 탭 아이콘과 같은 그림이라 「저 줄이 저 화면을 연다」가 눈으로 이어진다. */}
-      <Icon name="face" />
-      <span style={{ flex: 1 }}>
-        <span style={{ display: 'block', fontSize: 15, fontWeight: 600, color: 'var(--text)' }}>
-          {shot ? '오늘 찍었어요' : '오늘 아직 안 찍었어요'}
-        </span>
-        <span style={{ display: 'block', fontSize: 13, marginTop: 2, color: 'var(--text-sub)' }}>
-          {shot ? (verdict ? VERDICT_KO[verdict] : "'오늘' 탭에서 볼 수 있어요") : '지난 사진에 얼굴을 겹쳐 같은 구도로 찍어요'}
-        </span>
-      </span>
-      <span aria-hidden style={{ fontSize: 14, fontWeight: 600, color: 'var(--blue)' }}>
-        {shot ? '다시 찍기' : '찍기'}
-      </span>
+      {/* 오늘 탭 아이콘과 같은 그림이라 「저 버튼이 저 화면을 연다」가 눈으로 이어진다. */}
+      <Icon name="face" size={22} />
+      오늘 얼굴 찍기
     </button>
+  );
+}
+
+/**
+ * 찍은 뒤 행(§3-3). **사진은 절대 안 그린다** — 이 탭이 첫 화면이 된 이유가 「부르지 않았는데
+ * 얼굴이 보인다」였다. 찍었는지와 관찰 답만 말한다.
+ *
+ * ⚠️ **행 전체는 버튼이 아니다.** v4-1에서는 두 상태 모두 행 전체가 버튼이었는데, 찍은 날의
+ * 이 행은 **상태 보고**이고 행동은 정정 하나뿐이라 큰 표면을 버튼으로 두면 「또 눌러야 하나」로
+ * 읽힌다. 「다시 찍기」가 덮어쓰기임은 오늘 탭의 같은 문구가 이미 가르친다.
+ *
+ * DB가 열리기 전 한 프레임은 찍기 CTA로 뜰 수 있다 — 오늘 탭이 첫 화면이던 때와 같은
+ * 깜빡임이라 받아들인다.
+ */
+function ShotRow({ verdict, onShoot }: { verdict: Verdict | undefined; onShoot: () => void }) {
+  return (
+    <div style={{ ...ui.card, display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px' }}>
+      <span
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          flexShrink: 0,
+          width: 22,
+          height: 22,
+          borderRadius: 999,
+          color: '#fff',
+          background: 'var(--green)',
+        }}
+      >
+        <Icon name="check" size={14} />
+      </span>
+      <span style={{ flex: 1 }}>
+        <span style={{ display: 'block', fontSize: 15, fontWeight: 600, color: 'var(--text)' }}>오늘 찍었어요</span>
+        <span style={{ display: 'block', fontSize: 13, marginTop: 2, color: 'var(--text-sub)' }}>
+          {verdict ? VERDICT_KO[verdict] : "'오늘' 탭에서 볼 수 있어요"}
+        </span>
+      </span>
+      <button
+        aria-label="오늘 얼굴 다시 찍기"
+        style={{ ...ui.ghost, color: 'var(--text-sub)' }}
+        onClick={onShoot}
+      >
+        다시 찍기
+      </button>
+    </div>
   );
 }
 
