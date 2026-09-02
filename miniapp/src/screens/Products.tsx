@@ -223,9 +223,13 @@ function TodayStrip({ shot, verdict, onShoot }: { shot: boolean; verdict: Verdic
  * 라벨 하나로 뒀다가, 실기기에서 「기록 백업 켜기」를 보고 **이미 켜진 줄 안** 사례가 있었다
  * (T-010) — 라벨에 행동만 적으면 상태로 읽힌다. 스위치에는 행동 문구 자체가 없다.
  *
- * 아래 줄은 그래서 상태를 되풀이하지 않고 **왜 켜는지**를 말한다. 단 하나 **켜 놓고 안 되는
- * 상태**만은 색까지 바꾼다 — 사용자는 지켜진다고 믿는데 실제로는 아무것도 안 올라간,
- * 이 기능에서 제일 위험한 상태라 회색으로 두면 정상처럼 읽힌다.
+ * ⚠️ 그 스위치가 **꺼짐인지 켜짐인지**를 다시 못 읽는다는 보고가 이어져(UX 1차) 상태를
+ * **색·표식·글자 셋**으로 갈랐다 — 트랙 색, 트랙 안 체크/빈 원, 스위치 아래 「켜짐/꺼짐」.
+ * 아래 줄 문장도 상태로 **시작**한다. 셋 중 어느 하나만 봐도 상태를 안다는 것이 요점이고,
+ * 색 하나에 기대면 색을 못 가리는 사람에게는 아무 신호도 없는 것과 같다.
+ *
+ * 단 하나 **켜 놓고 안 되는 상태**만은 색을 경고로 바꾼다 — 사용자는 지켜진다고 믿는데
+ * 실제로는 아무것도 안 올라간, 이 기능에서 제일 위험한 상태다.
  */
 function BackupToggle({
   enabled,
@@ -248,49 +252,133 @@ function BackupToggle({
         role="switch"
         aria-checked={enabled}
         onClick={onToggle}
-        style={{ ...ui.card, display: 'flex', alignItems: 'center', gap: 12, width: '100%', textAlign: 'left' }}
+        style={{
+          ...ui.card,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 12,
+          width: '100%',
+          textAlign: 'left',
+          /*
+            켜진 행은 톤까지 바뀐다 — 51px 스위치를 안 봐도 **행 전체**가 켜졌다고 말한다.
+
+            ⚠️ `ui.card`가 shorthand `border`를 쓰므로 여기서도 **shorthand로 갈아 끼운다**
+            (`History.tsx` `cellStyle`과 같은 방식). `borderColor`만 덮으면 shorthand 혼용이라
+            켜짐→꺼짐 전환에서 React가 border를 통째로 지운다 — 「Removing a style property
+            during rerender」 경고와 함께 테두리가 사라진다(리뷰 2026-09-02 실측).
+          */
+          background: enabled ? 'var(--blue-soft)' : 'var(--bg-sub)',
+          border: enabled ? '1px solid var(--blue-soft)' : '1px solid var(--line)',
+        }}
       >
         <span style={{ flex: 1 }}>
           <span style={{ display: 'block', fontSize: 15, fontWeight: 600, color: 'var(--text)' }}>기록 백업</span>
+          {/*
+            **문장이 상태로 시작한다** — 스위치를 못 알아본 사람도 첫 두 글자로 안다.
+            꺼짐일 때만 「왜 켜는지」를 잇는다(켠 사람에게 켜는 이유는 이미 지난 이야기다).
+          */}
           <span
             data-testid="backup-state"
-            style={{ display: 'block', fontSize: 13, marginTop: 2, color: failing ? 'var(--amber)' : 'var(--text-sub)' }}
+            style={{
+              display: 'block',
+              fontSize: 13,
+              marginTop: 2,
+              fontWeight: enabled ? 600 : 400,
+              color: failing ? 'var(--amber)' : enabled ? 'var(--blue-dark)' : 'var(--text-sub)',
+            }}
           >
             {enabled
               ? at
-                ? `마지막 백업 ${at}`
-                : '아직 백업하지 못했어요'
-              : '기기를 바꿔도 제품과 관찰이 남아요'}
+                ? `켜져 있어요 · 마지막 백업 ${at}`
+                : '켜져 있어요 · 아직 백업하지 못했어요'
+              : '꺼져 있어요 · 켜면 기기를 바꿔도 제품과 관찰이 남아요'}
           </span>
         </span>
-        {/* 상태는 위의 `aria-checked`가 이미 말한다 — 여기서 또 읽히면 같은 말이 두 번 난다. */}
-        <span aria-hidden style={{ ...trackStyle, background: enabled ? 'var(--blue)' : 'var(--line-strong)' }}>
-          <span style={{ ...thumbStyle, transform: enabled ? 'translateX(20px)' : 'none' }} />
+        {/*
+          ⚠️ 스위치 그림과 아래 글자는 **둘 다 `aria-hidden`**이다 — 상태는 위의
+          `role="switch"` + `aria-checked`가 이미 말한다. 여기서 또 읽히면 같은 말이 두 번 난다.
+          눈으로는 **색·표식·글자 셋**이라 어느 하나만 봐도 상태를 안다.
+        */}
+        <span aria-hidden style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+          <span
+            style={{
+              ...trackStyle,
+              background: enabled ? 'var(--blue)' : '#fff',
+              borderColor: enabled ? 'var(--blue)' : 'var(--line-strong)',
+            }}
+          >
+            {/* `data-mark`는 계측기의 손잡이다 — 표식을 지우면 테스트가 죽는다(History.tsx와 같은 이디엄). */}
+            {enabled ? (
+              <span data-mark="on" style={{ ...markStyle, left: 8, color: '#fff' }}>
+                <Icon name="check" size={13} />
+              </span>
+            ) : (
+              // 빈 원. 켜짐의 체크와 짝이 되는 「아직 아무것도 아님」의 표식이다.
+              <span data-mark="off" style={{ ...markStyle, right: 6, ...emptyMarkStyle }} />
+            )}
+            <span
+              style={{
+                ...thumbStyle,
+                background: enabled ? '#fff' : 'var(--text-weak)',
+                transform: enabled ? 'translateX(20px)' : 'none',
+              }}
+            />
+          </span>
+          <span style={{ fontSize: 11, fontWeight: 700, color: enabled ? 'var(--blue-dark)' : 'var(--text-weak)' }}>
+            {enabled ? '켜짐' : '꺼짐'}
+          </span>
         </span>
       </button>
     </>
   );
 }
 
-/** iOS 스위치 치수. 토스 안에서 도는 앱이라 사용자가 이미 아는 형태를 그대로 쓴다. */
+/**
+ * iOS 스위치 치수. 토스 안에서 도는 앱이라 사용자가 이미 아는 형태를 그대로 쓴다.
+ *
+ * ⚠️ 테두리는 **분리 속성**으로 쓴다(`ui.ts` 머리말) — shorthand `border`를 섞으면
+ * 뒤따르는 `borderColor` 덮어쓰기가 순서에 따라 조용히 무시된다.
+ */
 const trackStyle: React.CSSProperties = {
   boxSizing: 'border-box',
+  position: 'relative',
   flexShrink: 0,
   width: 51,
   height: 31,
   padding: 2,
   borderRadius: 999,
-  transition: 'background 0.2s',
+  borderWidth: 2,
+  borderStyle: 'solid',
+  transition: 'background 0.2s, border-color 0.2s',
+};
+
+/** 트랙 안 표식의 공통 자리. 손잡이가 비켜 선 반대편에 앉는다. */
+const markStyle: React.CSSProperties = {
+  position: 'absolute',
+  top: '50%',
+  transform: 'translateY(-50%)',
+  display: 'flex',
+  lineHeight: 0,
+};
+
+const emptyMarkStyle: React.CSSProperties = {
+  boxSizing: 'border-box',
+  width: 9,
+  height: 9,
+  borderRadius: 999,
+  borderWidth: 2,
+  borderStyle: 'solid',
+  borderColor: 'var(--line-strong)',
 };
 
 const thumbStyle: React.CSSProperties = {
   display: 'block',
-  width: 27,
-  height: 27,
+  position: 'relative',
+  width: 23,
+  height: 23,
   borderRadius: 999,
-  background: '#fff',
   boxShadow: '0 1px 3px rgba(0, 0, 0, 0.2)',
-  transition: 'transform 0.2s',
+  transition: 'transform 0.2s, background 0.2s',
 };
 
 function Section({ title, testId, children }: { title: string; testId: string; children: React.ReactNode }) {

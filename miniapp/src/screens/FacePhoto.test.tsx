@@ -126,6 +126,13 @@ function seed(dates: string[]) {
 const btn = (name: string) => screen.getByRole('button', { name }) as HTMLButtonElement;
 
 /**
+ * 프리뷰 컨트롤 한 줄의 두 칩. **셔터는 화면에서 유일한 큰 버튼**이고, 「3초 뒤에 찍을까」와
+ * 「겹쳐 볼까」는 셔터가 아니라 **셔터의 설정**이라 스위치다(UX 1차 §4).
+ */
+const timerSwitch = () => screen.getByRole('switch', { name: '3초' });
+const ghostSwitch = () => screen.getByRole('switch', { name: '겹치기' });
+
+/**
  * `IDBDatabase.close`를 지켜본다. **프로토타입에 건다** — 화면이 연 연결의 핸들은 밖에서
  * 잡을 수 없다.
  */
@@ -247,6 +254,22 @@ describe('촬영 화면 — 첫 촬영(사진 0장)', () => {
     setup();
     expect(await screen.findByText('사진은 이 기기에만 저장되며 어디로도 전송되지 않습니다.')).toBeTruthy();
   });
+
+  /*
+    겹칠 사진이 아직 없으니 켤 수도 없다. 그렇다고 **빼 버리면 셔터가 가운데를 잃는다** —
+    자리는 지키고 보이지만 않게 한다(UX 1차 §4-1).
+  */
+  it('겹쳐 보기 스위치는 안 보이되 자리는 지킨다 — 셔터가 가운데 서야 한다', async () => {
+    const { container } = setup();
+    await screen.findByRole('button', { name: '촬영' });
+
+    // `visibility: hidden`은 **접근성 트리에서도 빠진다** — 스크린리더에게도 안 들리는 것이
+    // 맞다(겹칠 사진이 없어 켤 수 없는 스위치다). 그래서 역할이 아니라 DOM으로 집어 든다.
+    expect(screen.queryByRole('switch', { name: '겹치기' })).toBeNull();
+    // 통째로 빼 버리면 여기서 null이라 터진다 — 「자리는 지킨다」를 재는 것이 이 줄이다.
+    const ghost = container.querySelector('[aria-label="겹치기"]')!;
+    expect(ghost.getAttribute('style')).toContain('visibility: hidden');
+  });
 });
 
 describe('촬영 화면 — 고스트(사진 1장 이상)', () => {
@@ -271,14 +294,16 @@ describe('촬영 화면 — 고스트(사진 1장 이상)', () => {
     expect(screen.queryByRole('img', { name: '얼굴 가이드' })).toBeNull();
   });
 
-  it('토글로 잠깐 끌 수 있다 — 정렬 중에 내 얼굴이 안 보이는 순간이 있다', async () => {
+  it('스위치로 잠깐 끌 수 있다 — 정렬 중에 내 얼굴이 안 보이는 순간이 있다', async () => {
     seed(['2026-01-05']);
     setup();
+    await screen.findByAltText('기준 사진');
+    expect(ghostSwitch().getAttribute('aria-checked')).toBe('true');
 
-    fireEvent.click(await screen.findByRole('button', { name: '고스트 끄기' }));
+    fireEvent.click(ghostSwitch());
 
     expect(screen.queryByAltText('기준 사진')).toBeNull();
-    expect(btn('고스트 켜기')).toBeTruthy();
+    expect(ghostSwitch().getAttribute('aria-checked')).toBe('false');
   });
 
   it('닫으면 고스트 blob URL을 놓아준다 — 안 놓으면 조용히 메모리만 자란다', async () => {
@@ -350,12 +375,27 @@ describe('촬영 화면 — 셔터 플래시', () => {
     expect(capture).toHaveBeenCalledTimes(1);
   });
 
-  it('3초 후 촬영도 카운트가 끝나면 같은 플래시를 탄다', async () => {
-    const { capture, container } = setup();
-    await screen.findByRole('button', { name: '3초 후 촬영' });
+  it('타이머를 켜지 않았으면 셔터가 곧장 플래시로 간다 — 카운트다운이 안 뜬다', async () => {
+    setup();
+    await screen.findByRole('button', { name: '촬영' });
+    expect(timerSwitch().getAttribute('aria-checked')).toBe('false');
 
     vi.useFakeTimers();
-    fireEvent.click(btn('3초 후 촬영'));
+    fireEvent.click(btn('촬영'));
+    await advance(250);
+    vi.useRealTimers();
+
+    expect(screen.queryByText('3')).toBeNull();
+  });
+
+  it('타이머를 켜면 같은 셔터가 카운트를 돌고 끝나면 같은 플래시를 탄다', async () => {
+    const { capture, container } = setup();
+    await screen.findByRole('button', { name: '촬영' });
+    fireEvent.click(timerSwitch());
+    expect(timerSwitch().getAttribute('aria-checked')).toBe('true');
+
+    vi.useFakeTimers();
+    fireEvent.click(btn('촬영'));
     expect(screen.getByText('3')).toBeTruthy();
     // 3000이 카운트 0에 닿는 지점이고, 캡처는 그로부터 FLASH_MS(500) 뒤다 — 그 사이를 본다.
     await advance(3250);
@@ -590,10 +630,11 @@ describe('촬영 화면 — 카메라 중단과 복구', () => {
     const a = fakeStream();
     const b = fakeStream();
     const { capture } = setup({ media: opens(a.stream, b.stream) });
-    await screen.findByRole('button', { name: '3초 후 촬영' });
+    await screen.findByRole('button', { name: '촬영' });
+    fireEvent.click(timerSwitch());
 
     vi.useFakeTimers();
-    fireEvent.click(btn('3초 후 촬영'));
+    fireEvent.click(btn('촬영'));
     expect(screen.getByText('3')).toBeTruthy();
 
     act(() => a.kill('ended'));
@@ -645,10 +686,11 @@ describe('촬영 화면 — 카메라 중단과 복구', () => {
 describe('촬영 화면 — 3초 타이머', () => {
   it('카운트다운을 3·2·1로 보여준 뒤 찍는다 — 폰을 세우고 물러선 사람의 유일한 경로', async () => {
     const { capture } = setup();
-    await screen.findByRole('button', { name: '3초 후 촬영' });
+    await screen.findByRole('button', { name: '촬영' });
+    fireEvent.click(timerSwitch());
 
     vi.useFakeTimers();
-    fireEvent.click(btn('3초 후 촬영'));
+    fireEvent.click(btn('촬영'));
     expect(screen.getByText('3')).toBeTruthy();
 
     await advance(1000);

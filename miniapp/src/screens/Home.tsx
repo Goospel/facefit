@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useState, type CSSProperties } from 'react';
 
+import { Icon } from '../components/Icon';
 import { isActive, sortProducts } from '../logic/products';
 import { isNotifySupported, requestNotifyAgreement, type NotifyResult } from '../notify';
 import { VERDICT_KO, type Notes, type Product } from '../storage';
@@ -36,6 +37,33 @@ const NOTIFY_TEXT: Record<NotifyResult, { sub: string; right: string; tone: 'on'
 const NOTIFY_IDLE = { sub: '매일 아침 8시에 찍을 시간을 알려드려요', right: '받기', tone: 'off' } as const;
 
 const TONE_COLOR = { on: 'var(--blue)', off: 'var(--text-sub)', warn: 'var(--amber)' } as const;
+
+/** 테두리는 분리 속성으로 쓴다(`ui.ts` 머리말). */
+const notifyPillStyle: CSSProperties = {
+  flexShrink: 0,
+  padding: '8px 14px',
+  fontSize: 14,
+  fontWeight: 600,
+  whiteSpace: 'nowrap',
+  borderRadius: 999,
+  borderWidth: 1,
+  borderStyle: 'solid',
+  borderColor: 'var(--blue)',
+  background: '#fff',
+  color: 'var(--blue)',
+};
+
+/** 켜진 뒤의 표시. 알약이 아니라 **표식 + 글자**다 — 행동이 아니라 사실이다. */
+const notifyDoneStyle: CSSProperties = {
+  flexShrink: 0,
+  display: 'flex',
+  alignItems: 'center',
+  gap: 4,
+  fontSize: 14,
+  fontWeight: 600,
+  whiteSpace: 'nowrap',
+  color: 'var(--blue-dark)',
+};
 
 export function Home({
   products,
@@ -166,8 +194,19 @@ export function Home({
                 끄려면 토스 앱 → 전체 → 설정 → 알림 → 서비스별 알림
               </span>
             </span>
-            {/* 눌러서 여는 것임을 오른쪽이 말한다 — 켜진 뒤에도 멱등이라 자리를 지킨다. */}
-            <span aria-hidden style={{ fontSize: 14, fontWeight: 600, color: 'var(--blue)' }}>
+            {/*
+              눌러서 여는 것임을 오른쪽이 말한다 — 켜진 뒤에도 멱등이라 자리를 지킨다.
+
+              ⚠️ **알약으로 그리는 이유**: 백업 스위치와 같은 카드 가족이라 오른쪽이 작은
+              글자뿐이면 스위치의 상태 표시로 읽혔다(UX 1차 §3). 테두리를 두른 캡슐은
+              「누르면 무언가 열린다」를 그림으로 말한다.
+
+              ⚠️ 반대로 **켜진 뒤에는 알약을 걷는다** — 알약이 곧 행동의 신호라, 이미 켜진
+              상태에 두면 도로 「눌러야 할 것」으로 읽힌다. `warn`은 알약 그대로다(못 물어봤으니
+              다시 누르라는 뜻이 맞다). 장식이라 `aria-hidden` — 이름은 버튼의 `aria-label`이다.
+            */}
+            <span aria-hidden data-testid="notify-right" style={on ? notifyDoneStyle : notifyPillStyle}>
+              {on && <Icon name="check" size={16} />}
               {notify.right}
             </span>
           </button>

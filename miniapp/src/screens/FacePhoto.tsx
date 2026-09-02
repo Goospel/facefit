@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 
 import { probeCamera, stopStream, type CameraProbeResult, type MediaDevicesLike } from '../camera';
+import { Icon } from '../components/Icon';
 import { captureJpeg, PREVIEW_TRANSFORM, type Captured } from '../logic/capture';
 import { isActive } from '../logic/products';
 import { isNotifySupported, requestNotifyAgreement } from '../notify';
@@ -107,6 +108,11 @@ export function FacePhoto({
   // 기준 사진은 목록의 **첫 장**(가장 오래된 것)이다 — `listPhotos`가 날짜 오름차순이라 그렇다.
   const { db, photos } = usePhotos(idb);
   const [ghostOn, setGhostOn] = useState(true);
+  /**
+   * 셔터를 3초 뒤로 미룰까. **세션 안에서만 산다** — 저장해 두면 다음에 화면을 연 사람이
+   * 셔터를 눌러 놓고 「왜 안 찍히지」를 3초 동안 겪는다. 기본은 즉시 촬영이다.
+   */
+  const [timerOn, setTimerOn] = useState(false);
   const [count, setCount] = useState<number | null>(null);
   /** 흰 오버레이가 떠 있다. 이게 켜져 있는 동안 셔터는 잠긴다. */
   const [flash, setFlash] = useState(false);
@@ -564,25 +570,60 @@ export function FacePhoto({
           <p style={{ ...ui.sub, color: '#8b95a1', textAlign: 'center', margin: '4px 0 0' }}>
             아침 세안 직후, 같은 자리에서 찍으면 비교가 정확해져요.
           </p>
-          <div style={{ ...ui.row, marginTop: 12 }}>
-            <button style={{ ...ui.secondary, flex: 1 }} disabled={busy} onClick={() => setFlash(true)}>
-              촬영
+          {/*
+            컨트롤 한 줄(UX 1차 §4). 예전에는 「촬영」·「3초 후 촬영」 두 버튼이 나란히 서서
+            **파란 버튼이 둘**이었다 — 어느 쪽이 셔터인지 매번 읽어야 했다. 셔터는 하나로 모으고,
+            「3초 뒤에 찍을까」와 「겹쳐 볼까」는 셔터가 아니라 **셔터의 설정**이라 칩으로 내렸다.
+          */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 12 }}>
+            {/*
+              폰을 기대 세우고 물러서면 버튼에 손이 안 닿는다 — 그때 켜는 스위치다.
+
+              ⚠️ 접근성 이름은 **보이는 글자 안에 들어 있어야 한다**(WCAG 2.5.3 Label in Name).
+              「3초 타이머」로 두면 화면에는 「3초 꺼짐」이라 적혀 있는데 음성 조작 사용자가
+              「3초 타이머」라고 불러야 눌린다 — 보이는 대로 말한 사람만 실패한다. 상태
+              (「켜짐/꺼짐」)는 `aria-checked`가 말하므로 이름에 안 넣는다.
+            */}
+            <button
+              role="switch"
+              aria-checked={timerOn}
+              aria-label="3초"
+              // ⚠️ 칩은 `busy` 중에도 살아 있다 — 상태를 바꾸는 것은 촬영을 방해하지 않는다.
+              onClick={() => setTimerOn(!timerOn)}
+              style={chipStyle(timerOn)}
+            >
+              <Icon name="timer" size={16} />
+              {timerOn ? '3초 켜짐' : '3초 꺼짐'}
             </button>
-            {/* 폰을 기대 세우고 물러서면 버튼에 손이 안 닿는다. */}
-            <button style={{ ...ui.primary, flex: 1 }} disabled={busy} onClick={() => setCount(3)}>
-              3초 후 촬영
+            {/* **화면에서 유일하게 큰 버튼**이다. 카메라 앱의 그 원이라 설명이 필요 없다. */}
+            <button
+              aria-label="촬영"
+              disabled={busy}
+              onClick={() => (timerOn ? setCount(3) : setFlash(true))}
+              style={shutterStyle}
+            >
+              <span aria-hidden style={{ flex: 1, borderRadius: 999, background: '#fff' }} />
+            </button>
+            {/*
+              ⚠️ 겹칠 사진이 없으면 **숨기되 자리는 지킨다** — 통째로 빼면 셔터가 가운데를
+              잃고 화면이 눌린 것처럼 기운다.
+            */}
+            <button
+              role="switch"
+              aria-checked={ghostOn}
+              aria-label="겹치기"
+              onClick={() => setGhostOn(!ghostOn)}
+              style={{ ...chipStyle(ghostOn), ...(baseline ? null : { visibility: 'hidden' as const }) }}
+            >
+              <Icon name="layers" size={16} />
+              {ghostOn ? '겹치기 켜짐' : '겹치기 꺼짐'}
             </button>
           </div>
-          {baseline && (
-            <button style={{ ...ui.ghost, width: '100%', color: '#b0b8c1' }} onClick={() => setGhostOn(!ghostOn)}>
-              {ghostOn ? '고스트 끄기' : '고스트 켜기'}
-            </button>
-          )}
         </>
       )}
 
       {/* 검수·사용자 양쪽에 같은 문장으로 답한다. 사실이다 — 서버는 0대다(설계 §6). */}
-      <p style={{ ...ui.sub, color: '#8b95a1', textAlign: 'center', margin: '10px 0 0' }}>{LOCAL_ONLY}</p>
+      <p style={{ ...ui.sub, color: '#8b95a1', textAlign: 'center', margin: '14px 0 0' }}>{LOCAL_ONLY}</p>
 
       {/* 캡처용. 화면에는 안 보인다. */}
       <canvas ref={canvas} style={{ display: 'none' }} />
@@ -629,6 +670,46 @@ function FaceGuide() {
     </svg>
   );
 }
+
+/**
+ * 셔터. 카메라 앱의 흰 테 두른 원을 그대로 쓴다 — 사용자가 이미 아는 형태라 라벨이 없어도
+ * 무엇인지 안다(접근성 이름은 `aria-label`이 준다). **이 화면에서 유일하게 큰 버튼**이다.
+ *
+ * 테두리는 분리 속성으로 쓴다(`ui.ts` 머리말).
+ */
+const shutterStyle: React.CSSProperties = {
+  boxSizing: 'border-box',
+  flexShrink: 0,
+  display: 'flex',
+  width: 76,
+  height: 76,
+  padding: 4,
+  borderRadius: 999,
+  borderWidth: 4,
+  borderStyle: 'solid',
+  borderColor: '#fff',
+  background: 'transparent',
+};
+
+/**
+ * 셔터 양옆의 칩. 켜짐은 파랑 채움 + 「켜짐」 글자 + 아이콘 셋으로 말한다 —
+ * 어두운 화면이라 색 하나에 기대면 꺼짐과 잘 안 갈린다.
+ */
+const chipStyle = (on: boolean): React.CSSProperties => ({
+  display: 'flex',
+  alignItems: 'center',
+  gap: 5,
+  padding: '8px 11px',
+  fontSize: 13,
+  fontWeight: 600,
+  whiteSpace: 'nowrap',
+  borderRadius: 999,
+  borderWidth: 1,
+  borderStyle: 'solid',
+  borderColor: on ? 'var(--blue)' : '#3a3f47',
+  background: on ? 'var(--blue)' : 'transparent',
+  color: on ? '#fff' : '#b0b8c1',
+});
 
 /** 프리뷰·고스트·가이드가 정확히 포개지는 자리. 하나라도 어긋나면 정렬 자체가 거짓말이 된다. */
 const frameStyle: React.CSSProperties = {

@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { App } from './App';
@@ -283,6 +283,70 @@ describe('백업 스위치 — 제품 탭 상시', () => {
     expect(screen.getByRole('switch').getAttribute('aria-checked')).toBe('false');
   });
 
+  /*
+    ⚠️ **색·표식·글자 셋 중 어느 하나만 봐도 상태를 알아야 한다**(UX 1차). 켜짐과 꺼짐이
+    파랑↔회색 하나로만 갈리면, 색을 못 가리는 사람과 흘끗 보는 사람 양쪽이 못 읽는다.
+    그래서 스위치 아래에 「켜짐/꺼짐」 글자를 두고, 아래 줄 문장도 **상태로 시작**한다.
+  */
+  it('스위치 아래에 상태 글자가 선다 — 색을 못 봐도 「켜짐/꺼짐」으로 읽힌다', () => {
+    render(<App />);
+    goProducts();
+
+    expect(within(screen.getByRole('switch')).getByText('꺼짐')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('switch'));
+
+    expect(within(screen.getByRole('switch')).getByText('켜짐')).toBeTruthy();
+  });
+
+  it('트랙 안에도 표식이 있다 — 색과 글자가 안 보여도 체크/빈 원으로 갈린다', () => {
+    render(<App />);
+    goProducts();
+
+    // 빈 원(꺼짐)과 체크(켜짐)는 짝이다 — 한쪽만 지워도 여기서 죽는다.
+    expect(screen.getByRole('switch').querySelector('[data-mark="off"]')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('switch'));
+
+    expect(screen.getByRole('switch').querySelector('[data-mark="on"]')).toBeTruthy();
+  });
+
+  it('스위치 그림과 상태 글자는 낭독에서 빠진다 — aria-checked가 이미 말한 것을 두 번 읽지 않는다', () => {
+    render(<App />);
+    goProducts();
+
+    expect(within(screen.getByRole('switch')).getByText('꺼짐').closest('[aria-hidden]')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('switch'));
+
+    expect(within(screen.getByRole('switch')).getByText('켜짐').closest('[aria-hidden]')).toBeTruthy();
+  });
+
+  /*
+    ⚠️ **첫 렌더만 보는 단언은 이 회귀를 못 잡는다.** 켜짐 톤을 `borderColor`만 덮어 넣었더니
+    `ui.card`의 shorthand `border`와 섞여, 끄는 순간 React가 border를 **통째로 지웠다**
+    (「Removing a style property during rerender」 · 리뷰 2026-09-02 실측). 켜진 화면도 꺼진
+    화면도 각각은 멀쩡해 보이고, **전환한 뒤에만** 테두리가 없다.
+  */
+  it('껐다 켰다 해도 테두리가 살아 있다 — shorthand를 shorthand로 갈아 끼운다', () => {
+    localStorage.setItem('facefit.backupEnabled', '1');
+
+    render(<App />);
+    goProducts();
+    expect(screen.getByRole('switch').getAttribute('style')).toContain('var(--blue-soft)');
+
+    fireEvent.click(screen.getByRole('switch'));
+
+    expect(screen.getByRole('switch').getAttribute('style')).toContain('1px solid var(--line)');
+  });
+
+  it('아래 줄이 상태로 시작한다 — 스위치를 못 알아봐도 첫 두 글자로 안다', () => {
+    render(<App />);
+    goProducts();
+
+    expect(screen.getByTestId('backup-state').textContent).toContain('꺼져 있어요');
+  });
+
   it('켜져 있고 백업한 적이 있으면 마지막 시각을 말한다 — 「지금 지켜지고 있나」의 답이다', () => {
     localStorage.setItem('facefit.backupEnabled', '1');
     localStorage.setItem('facefit.lastBackupAt', '2026-09-01T12:25:30.553Z');
@@ -291,7 +355,11 @@ describe('백업 스위치 — 제품 탭 상시', () => {
     goProducts();
 
     expect(screen.getByRole('switch').getAttribute('aria-checked')).toBe('true');
-    expect(screen.getByTestId('backup-state').textContent).toContain('9월 1일 21:25');
+    const state = screen.getByTestId('backup-state');
+    expect(state.textContent).toContain('켜져 있어요');
+    expect(state.textContent).toContain('9월 1일 21:25');
+    // 켜진 행은 카드 톤까지 바뀐다 — 스위치 51px을 안 봐도 행 전체가 켜졌다고 말한다.
+    expect(screen.getByRole('switch').getAttribute('style')).toContain('--blue-soft');
   });
 
   it('켜져 있는데 아직 못 올렸으면 그렇다고 말한다 — 켜 놓고 안 되는 상태가 제일 위험하다', () => {
@@ -301,6 +369,8 @@ describe('백업 스위치 — 제품 탭 상시', () => {
     goProducts();
 
     const state = screen.getByTestId('backup-state');
+    // 켜짐은 켜짐이라 말하되, 실패는 색으로 남긴다 — 두 사실이 서로를 지우지 않는다.
+    expect(state.textContent).toContain('켜져 있어요');
     expect(state.textContent).toContain('아직 백업하지 못했어요');
     // 회색으로 두면 정상 상태처럼 읽힌다 — 지켜진다고 믿는데 아무것도 안 올라간 상태다.
     expect(state.getAttribute('style')).toContain('--amber');
