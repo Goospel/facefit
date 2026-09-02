@@ -72,26 +72,31 @@ describe('formatBackupTime — 「지켜지고 있나」에 답하는 유일한 
 });
 
 describe('buildBackupBlob — 불변식의 클라이언트 절반', () => {
-  it('최상위 키가 정확히 넷이다 — 여기 하나가 늘면 서버가 400으로 막는다', () => {
-    const blob = buildBackupBlob([product()], { '2026-09-01': 'better' }, '2026-09-01T00:00:00.000Z');
+  it('최상위 키가 정확히 다섯이다 — 여기 하나가 늘면 서버가 400으로 막는다', () => {
+    // ⚠️ 이 테스트는 서버 화이트리스트(`BlobValidator.ALLOWED_TOP_LEVEL`)와 **짝이다** —
+    // v4-2에서 `usage`가 늘어 서버를 먼저 배포해야 했던 이유가 이것이다.
+    const blob = buildBackupBlob([product()], { '2026-09-01': 'better' }, {}, '2026-09-01T00:00:00.000Z');
 
-    expect(Object.keys(blob).sort()).toEqual(['clientSavedAt', 'notes', 'products', 'schemaVersion']);
+    expect(Object.keys(blob).sort()).toEqual(['clientSavedAt', 'notes', 'products', 'schemaVersion', 'usage']);
   });
 
-  it('제품·관찰을 그대로 싣는다 — 서버는 이 안을 불투명하게 저장한다', () => {
+  it('제품·관찰·사용 로그를 그대로 싣는다 — 서버는 이 안을 불투명하게 저장한다', () => {
     const p = product({ mfds: undefined });
 
-    const blob = buildBackupBlob([p], { '2026-09-01': 'worse' }, '2026-09-01T00:00:00.000Z');
+    const blob = buildBackupBlob([p], { '2026-09-01': 'worse' }, { '2026-09-01': ['p1'] }, '2026-09-01T00:00:00.000Z');
 
     expect(blob.products).toEqual([p]);
     expect(blob.notes).toEqual({ '2026-09-01': 'worse' });
+    expect(blob.usage).toEqual({ '2026-09-01': ['p1'] });
+    // ⚠️ **1을 유지한다** — `usage`는 선택 키고, 2로 올리면 옛 빌드 클라가 새 백업을 「없음」으로 읽는다.
     expect(blob.schemaVersion).toBe(1);
   });
 
   it('사진을 실을 자리가 아예 없다 — 직렬화 결과에 사진 키가 나타나지 않는다', () => {
     // 이 테스트가 지키는 것은 코드가 아니라 **약속**이다: 「사진은 이 기기에만 저장되며
     // 어디로도 전송되지 않습니다」가 글자 그대로 참이어야 한다(온보딩 고지·검수 통과 문구).
-    const json = JSON.stringify(buildBackupBlob([product()], {}, '2026-09-01T00:00:00.000Z'));
+    // `usage`는 제품 id와 날짜뿐이라 이 검사를 그대로 통과한다 — 그 사실도 여기서 잠근다.
+    const json = JSON.stringify(buildBackupBlob([product()], {}, { '2026-09-01': ['p1'] }, '2026-09-01T00:00:00.000Z'));
 
     expect(json).not.toMatch(/photo|image|dataUri|base64/i);
   });
@@ -137,7 +142,7 @@ describe('getBackupKey — SDK 래퍼', () => {
 });
 
 describe('uploadBackup', () => {
-  const blob = buildBackupBlob([product()], {}, '2026-09-01T00:00:00.000Z');
+  const blob = buildBackupBlob([product()], {}, {}, '2026-09-01T00:00:00.000Z');
 
   it('PUT으로 키 헤더와 블롭을 보낸다', async () => {
     const f = fakeFetch({ status: 200, body: '{"savedAt":"2026-09-01T00:00:00Z"}' });
@@ -165,13 +170,31 @@ describe('uploadBackup', () => {
 });
 
 describe('fetchBackup', () => {
-  const stored = { schemaVersion: 1, products: [product()], notes: {}, clientSavedAt: '2026-09-01T00:00:00.000Z' };
+  const stored = {
+    schemaVersion: 1,
+    products: [product()],
+    notes: {},
+    usage: { '2026-09-01': ['p1'] },
+    clientSavedAt: '2026-09-01T00:00:00.000Z',
+  };
 
   it('200이면 블롭을 준다', async () => {
     const f = fakeFetch({ status: 200, body: JSON.stringify(stored) });
 
     await expect(fetchBackup(KEY, f)).resolves.toEqual(stored);
     expect((f.mock.calls[0][1] as RequestInit).method ?? 'GET').toBe('GET');
+  });
+
+  it('usage가 없는 옛 백업도 받는다 — 선택 키라 없는 것이 정상이다', async () => {
+    const old = { schemaVersion: 1, products: [product()], notes: {}, clientSavedAt: '2026-09-01T00:00:00.000Z' };
+
+    await expect(fetchBackup(KEY, fakeFetch({ status: 200, body: JSON.stringify(old) }))).resolves.toEqual(old);
+  });
+
+  it('usage가 배열이면 null이다 — 날짜 키 객체여야 화면의 조인이 성립한다', async () => {
+    const bad = { ...stored, usage: ['p1'] };
+
+    await expect(fetchBackup(KEY, fakeFetch({ status: 200, body: JSON.stringify(bad) }))).resolves.toBeNull();
   });
 
   it('404면 null이다 — 백업이 없는 것은 오류가 아니라 신규 사용자의 정상 상태다', async () => {

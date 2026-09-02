@@ -5,7 +5,20 @@ import { formatBackupTime } from '../logic/backup';
 import { daysBetween } from '../logic/calendar';
 import { keepsSnapshot, searchProducts, type Suggestion } from '../logic/mfds';
 import { CATEGORY_KO, isActive, sortProducts } from '../logic/products';
-import { CATEGORIES, newId, VERDICT_KO, type Category, type MfdsSnapshot, type Notes, type Product, type Verdict } from '../storage';
+import {
+  CATEGORIES,
+  FREQUENCIES,
+  FREQUENCY_KO,
+  newId,
+  VERDICT_KO,
+  type Category,
+  type Frequency,
+  type MfdsSnapshot,
+  type Notes,
+  type Product,
+  type Usage,
+  type Verdict,
+} from '../storage';
 import { ui } from '../ui';
 import { usePhotos } from './usePhotos';
 
@@ -30,6 +43,7 @@ export function Products({
   onChange,
   date,
   notes,
+  usage,
   onShoot,
   backup,
 }: {
@@ -40,6 +54,8 @@ export function Products({
   date: string;
   /** 오늘의 관찰 답. 상태 줄이 「찍었어요」 아래에 이 문구를 단다. */
   notes: Notes;
+  /** 사용 로그(v4-2). 가끔 제품 카드의 「n회」가 여기서 나온다 — 전체를 센다(§4-5). */
+  usage: Usage;
   /** 상태 줄의 유일한 행동 — 촬영 전체화면을 연다(닫으면 이 탭으로 돌아온다). */
   onShoot: () => void;
   /**
@@ -125,7 +141,7 @@ export function Products({
       {active.length > 0 && (
         <Section title="사용 중" testId="section-active">
           {active.map((p) => (
-            <Card key={p.id} product={p} date={date} onEdit={setEditing} />
+            <Card key={p.id} product={p} date={date} usage={usage} onEdit={setEditing} />
           ))}
         </Section>
       )}
@@ -133,7 +149,7 @@ export function Products({
       {ended.length > 0 && (
         <Section title="종료" testId="section-ended">
           {ended.map((p) => (
-            <Card key={p.id} product={p} date={date} onEdit={setEditing} />
+            <Card key={p.id} product={p} date={date} usage={usage} onEdit={setEditing} />
           ))}
         </Section>
       )}
@@ -297,9 +313,28 @@ const md = (d: string) => `${Number(d.slice(5, 7))}월 ${Number(d.slice(8))}일`
  * 듣고 며칠째인지는 못 듣는다(리뷰 2026-09-02). `aria-describedby`로 숫자 블록과 본문을
  * **설명**으로 잇는다 — 이름은 그대로라 `getByRole('button', { name })` 계측기가 안 흔들린다.
  */
-function Card({ product, date, onEdit }: { product: Product; date: string; onEdit: (p: Product) => void }) {
+function Card({
+  product,
+  date,
+  usage,
+  onEdit,
+}: {
+  product: Product;
+  date: string;
+  usage: Usage;
+  onEdit: (p: Product) => void;
+}) {
   const using = isActive(product, date);
   const ended = product.endDate;
+  /**
+   * 가끔 제품은 「n일째」 대신 **「n회」**다(§4-5) — 「일째」는 매일 쓴다는 전제의 숫자라
+   * 주 1~2회 쓰는 제품에 붙으면 기록을 부풀려 읽게 한다.
+   *
+   * `ponytail:` 이 수는 **기록된 사진 날짜 수**이지 실제 사용 횟수가 아니다 — 사진을 안 찍은
+   * 날의 사용은 정의상 없다(비목표). 「실제 횟수」로 바꿀 계단은 없다.
+   */
+  const occasional = product.frequency === 'occasional';
+  const count = occasional ? Object.values(usage).filter((ids) => ids.includes(product.id)).length : 0;
   const days = daysBetween(product.startDate, ended ?? date) + 1;
   // 문서 안 다른 id와 부딪히지 않게 접두어를 단다. 순서가 곧 읽히는 순서다 — 「29 일째 토너 …」.
   const bodyId = `product-${product.id}`;
@@ -322,13 +357,15 @@ function Card({ product, date, onEdit }: { product: Product; date: string; onEdi
           color: using ? 'var(--blue-dark)' : 'var(--text-sub)',
         }}
       >
-        <span style={{ fontSize: 16, fontWeight: 700, lineHeight: 1.1 }}>{days}</span>
-        <span style={{ fontSize: 10, lineHeight: 1.1 }}>{ended ? '일' : '일째'}</span>
+        <span style={{ fontSize: 16, fontWeight: 700, lineHeight: 1.1 }}>{occasional ? count : days}</span>
+        <span style={{ fontSize: 10, lineHeight: 1.1 }}>{occasional ? '회' : ended ? '일' : '일째'}</span>
       </span>
       <span id={bodyId} style={{ flex: 1, minWidth: 0 }}>
         <b style={{ display: 'block', fontSize: 15, color: using ? 'var(--text)' : 'var(--text-sub)' }}>{product.name}</b>
         <span style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginTop: 6 }}>
           <span style={ui.chip}>{CATEGORY_KO[product.category]}</span>
+          {/* 「가끔」만 선다 — 매일이 기본이라 그 칩은 아무 말도 안 하면서 자리만 먹는다. */}
+          {occasional && <span style={ui.chip}>{FREQUENCY_KO.occasional}</span>}
           {product.mfds && <MfdsMeta m={product.mfds} />}
           {ended && <span style={{ fontSize: 12, color: 'var(--text-sub)' }}>{`${md(product.startDate)} ~ ${md(ended)}`}</span>}
         </span>
@@ -405,6 +442,8 @@ function ProductForm({
 }) {
   const [name, setName] = useState(initial?.name ?? '');
   const [category, setCategory] = useState<Category>(initial?.category ?? 'etc');
+  /** 없으면 매일이다(§3-5) — 로그를 받는 것은 「가끔」뿐이라 기본값이 조작을 0으로 만든다. */
+  const [frequency, setFrequency] = useState<Frequency>(initial?.frequency ?? 'daily');
   // 대부분 **오늘 쓰기 시작한 것**을 등록한다 — 기본값이 오늘이면 대개 손댈 일이 없다.
   const [startDate, setStartDate] = useState(initial?.startDate ?? today);
   const [endDate, setEndDate] = useState(initial?.endDate ?? '');
@@ -504,6 +543,35 @@ function ProductForm({
         </select>
       </label>
 
+      {/*
+        사용 빈도(v4-2 §4-5). 이 칸이 하는 일은 하나다 — **촬영 때 물어볼 제품인가.**
+        「가끔」일 때만 아래 한 줄이 서서 무슨 일이 생기는지 말한다(안 그러면 어디에도 안 보이는
+        설정이 된다). 「주 n회」류 선언 어휘를 안 두는 이유는 로그가 그 자리를 대신해서다.
+      */}
+      <div>
+        <label style={{ display: 'block' }}>
+          <span style={ui.label}>사용 빈도</span>
+          <select
+            style={{ ...ui.input, textAlign: 'left' }}
+            value={frequency}
+            onChange={(e) => setFrequency(e.target.value as Frequency)}
+          >
+            {FREQUENCIES.map((f) => (
+              <option key={f} value={f}>
+                {FREQUENCY_KO[f]}
+              </option>
+            ))}
+          </select>
+        </label>
+        {/*
+          ⚠️ 안내 줄은 `<label>` **밖**이다 — 안에 두면 라벨의 접근성 이름이 「사용 빈도촬영할
+          때 …」로 붙어, 스크린리더도 계측기도 그 칸을 이름으로 못 찾는다(리뷰 전 실측).
+        */}
+        {frequency === 'occasional' && (
+          <p style={{ ...ui.sub, margin: '6px 0 0' }}>촬영할 때 이 제품을 썼는지 물어봐요</p>
+        )}
+      </div>
+
       <label style={{ display: 'block' }}>
         <span style={ui.label}>시작일</span>
         <input
@@ -542,6 +610,8 @@ function ProductForm({
               id: initial?.id ?? newId(),
               name: name.trim(),
               category,
+              // 명시로 싣는다 — 어휘 밖 값이 `...initial`을 타고 조용히 살아남지 않게(위 `endDate`와 같은 이유).
+              frequency,
               startDate,
               /*
                 빈 칸은 **「사용 중」이지 빈 문자열이 아니다** — 빈 문자열로 넘기면 저장소의

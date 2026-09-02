@@ -2,9 +2,19 @@ import { useEffect, useRef, useState } from 'react';
 
 import { probeCamera, stopStream, type CameraProbeResult, type MediaDevicesLike } from '../camera';
 import { captureJpeg, PREVIEW_TRANSFORM, type Captured } from '../logic/capture';
+import { isActive } from '../logic/products';
 import { isNotifySupported, requestNotifyAgreement } from '../notify';
 import { savePhoto } from '../photoStore';
-import { isNotifyPrompted, saveNotifyPrompted, todayKey, VERDICT_KO, VERDICTS, type Verdict } from '../storage';
+import {
+  isNotifyPrompted,
+  saveNotifyPrompted,
+  todayKey,
+  VERDICT_KO,
+  VERDICTS,
+  type Product,
+  type Usage,
+  type Verdict,
+} from '../storage';
 import { ui } from '../ui';
 import { LOCAL_ONLY, useObjectUrl, usePhotos } from './usePhotos';
 
@@ -64,14 +74,26 @@ export const FLASH_MS = 500;
 const VERDICT_OPTIONS = VERDICTS.map((v) => ({ verdict: v, label: VERDICT_KO[v] }));
 
 export function FacePhoto({
+  products,
+  usage,
   onClose,
   onNote,
+  onUsage,
   media = navigator.mediaDevices,
   idb,
 }: {
+  /** 칩에 세울 후보. **가끔(`occasional`) + 오늘 사용 중**인 것만 물어본다(§4-4). */
+  products: Product[];
+  /** 오늘 로그가 이미 있으면 칩이 켜진 채로 뜬다 — 같은 날 다시 찍기가 정정 경로다(§4-9). */
+  usage: Usage;
   onClose: () => void;
   /** 관찰 1문항의 답. **안 부르는 것이 「건너뛰기」다** — 기본값을 대신 채우지 않는다. */
   onNote: (date: string, verdict: Verdict) => void;
+  /**
+   * 이 사진 직전 루틴에 쓴 제품. **빈 배열도 부른다**(「물어봤고 안 썼다」) — 대신 물어볼
+   * 제품이 하나도 없으면 **아예 안 부른다**(키 없음 = 안 물어봄. 3상 — §3-4).
+   */
+  onUsage: (date: string, ids: string[]) => void;
   /** 테스트가 가짜 카메라를 넣는 자리. 실사용에서는 `navigator.mediaDevices`다. */
   media?: MediaDevicesLike;
   /** 테스트가 fake-indexeddb를 넣는 자리. 없으면 `globalThis.indexedDB`. */
@@ -96,6 +118,11 @@ export function FacePhoto({
   const [down, setDown] = useState(false);
   /** 재취득 세대. 늘리면 여는 effect가 다시 도는데, **cleanup이 옛 스트림을 놓아주는 것도 그대로다.** */
   const [gen, setGen] = useState(0);
+  /**
+   * 이번 사진 직전에 쓴 제품(§4-4). **오늘 로그로 미리 채운다** — 같은 날 「다시 찍기」가
+   * 곧 정정 경로라, 빈손으로 열면 방금 적은 것이 조용히 지워진다.
+   */
+  const [used, setUsed] = useState<string[]>(() => usage[todayKey()] ?? []);
 
   const video = useRef<HTMLVideoElement>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
@@ -285,6 +312,27 @@ export function FacePhoto({
     onClose();
   }
 
+  const today = todayKey();
+  /**
+   * 오늘 물어볼 제품. **매일 제품은 여기 안 선다** — 구간 안에 대조군이 없어 로그가 관찰에
+   * 보태는 것이 없고, 매일 n개 체크는 촬영 루프를 죽인다(§3-5). 비면 칩 블록 자체가 없다.
+   */
+  const askable = products.filter((p) => p.frequency === 'occasional' && isActive(p, today));
+
+  /**
+   * 관찰 스텝의 유일한 출구. **칩 블록이 떠 있었으면 어느 버튼으로 나가든 로그를 남긴다** —
+   * 체크 없이 나간 것이 곧 「안 썼다」다(§3-4). 관찰 답은 안 고르면 여전히 안 남는다.
+   *
+   * ⚠️ 순서가 로그 → 관찰이다. 반대로 두면 관찰 저장이 화면을 닫는 경로에서 로그가 유실될 수 있다.
+   */
+  function leaveAsking(verdict?: Verdict) {
+    if (askable.length > 0) onUsage(today, used);
+    if (verdict) onNote(today, verdict);
+    endShoot();
+  }
+
+  const toggleUsed = (id: string) => setUsed((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+
   /** 제안 스텝의 두 버튼이 공유하는 것: **어느 쪽을 눌러도 「물어봤다」로 남는다**(재요청 규율). */
   function answerSuggestion(accepted: boolean) {
     saveNotifyPrompted();
@@ -321,24 +369,57 @@ export function FacePhoto({
   if (asking) {
     return (
       <main style={{ ...ui.pageFull, justifyContent: 'center' }}>
+        {/*
+          사용 로그 칩(§4-4). **가끔 제품이 오늘 하나도 없으면 이 블록이 통째로 없다** —
+          지금 사용자 대부분의 화면은 한 글자도 안 바뀐다. 제출 버튼도 안 늘린다: 아래 관찰
+          버튼과 건너뛰기가 이미 「이 화면을 나간다」라서, 안 쓴 날의 탭 수는 **0 증가**다.
+        */}
+        {askable.length > 0 && (
+          <>
+            <h2 style={{ ...ui.h2, fontSize: 20, textAlign: 'center' }}>어제부터 지금까지 쓴 게 있나요?</h2>
+            <p style={{ ...ui.sub, textAlign: 'center' }}>쓴 것만 눌러 주세요</p>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'center', marginBottom: 20 }}>
+              {askable.map((p) => {
+                const on = used.includes(p.id);
+                return (
+                  <button
+                    key={p.id}
+                    // 접근성 이름은 **이름 한 마디**다 — 켜짐·꺼짐은 `aria-checked`가 말한다.
+                    role="checkbox"
+                    aria-checked={on}
+                    onClick={() => toggleUsed(p.id)}
+                    // 테두리는 shorthand로 안 쓴다(`ui.ts` 머리말 — 리렌더에서 색이 풀린다).
+                    style={{
+                      ...ui.chip,
+                      padding: '9px 14px',
+                      fontSize: 14,
+                      ...(on ? { color: '#fff', background: 'var(--blue)', borderColor: 'var(--blue)' } : null),
+                    }}
+                  >
+                    {p.name}
+                  </button>
+                );
+              })}
+            </div>
+            <hr style={{ border: 0, borderTop: '1px solid var(--line)', margin: '0 0 20px', width: '100%' }} />
+          </>
+        )}
+
         <h2 style={{ ...ui.h2, fontSize: 20, textAlign: 'center' }}>오늘 피부, 어때 보였나요?</h2>
         <p style={{ ...ui.sub, textAlign: 'center' }}>답은 이 기기에만 남고, 나중에 무엇이 달랐는지 볼 때 쓰여요.</p>
         <div style={{ display: 'grid', gap: 8 }}>
           {VERDICT_OPTIONS.map((o) => (
-            <button
-              key={o.verdict}
-              style={ui.secondary}
-              onClick={() => {
-                onNote(todayKey(), o.verdict);
-                endShoot();
-              }}
-            >
+            <button key={o.verdict} style={ui.secondary} onClick={() => leaveAsking(o.verdict)}>
               {o.label}
             </button>
           ))}
         </div>
-        {/* 건너뛰기 = **아무것도 기록하지 않는다.** 기본값을 대신 채우면 아무 말도 안 한 사람의 답이 섞인다. */}
-        <button style={{ ...ui.ghost, width: '100%', marginTop: 8 }} onClick={endShoot}>
+        {/*
+          건너뛰기 = **관찰을 기록하지 않는다.** 기본값을 대신 채우면 아무 말도 안 한 사람의 답이 섞인다.
+          ⚠️ 다만 **칩 상태는 저장된다** — 칩이 눈앞에 있었던 날의 「체크 없음」은 「안 썼다」라는
+          사실이고, 그게 안 남으면 팩을 안 한 날의 사진이 대조군 노릇을 못 한다(§3-4).
+        */}
+        <button style={{ ...ui.ghost, width: '100%', marginTop: 8 }} onClick={() => leaveAsking()}>
           건너뛰기
         </button>
       </main>

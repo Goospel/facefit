@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { Suggestion } from '../logic/mfds';
 import { listPhotos, openPhotoDb, type FacePhoto as Photo } from '../photoStore';
-import type { MfdsSnapshot, Notes, Product } from '../storage';
+import type { MfdsSnapshot, Notes, Product, Usage } from '../storage';
 import { Products } from './Products';
 
 /**
@@ -49,13 +49,20 @@ const p = (over: Partial<Product> = {}): Product => ({
   ...over,
 });
 
-function setup(products: Product[] = [], over: { photos?: string[]; notes?: Notes } = {}) {
+function setup(products: Product[] = [], over: { photos?: string[]; notes?: Notes; usage?: Usage } = {}) {
   vi.mocked(openPhotoDb).mockResolvedValue({ close: () => {} } as unknown as import('../photoStore').PhotoDb);
   vi.mocked(listPhotos).mockResolvedValue((over.photos ?? []).map(photo));
   const onChange = vi.fn<(next: Product[]) => void>();
   const onShoot = vi.fn();
   const view = render(
-    <Products products={products} onChange={onChange} date={TODAY} notes={over.notes ?? {}} onShoot={onShoot} />,
+    <Products
+      products={products}
+      onChange={onChange}
+      date={TODAY}
+      notes={over.notes ?? {}}
+      usage={over.usage ?? {}}
+      onShoot={onShoot}
+    />,
   );
   return { onChange, onShoot, ...view };
 }
@@ -168,6 +175,98 @@ describe('제품 목록', () => {
   it('종료한 제품은 쓴 기간을 보여준다 — 오늘까지 세면 끝난 제품이 계속 자란다', () => {
     setup([p({ startDate: '2026-08-01', endDate: '2026-08-11' })]);
     expect(screen.getByText('8월 1일 ~ 8월 11일')).toBeTruthy();
+  });
+});
+
+/**
+ * 가끔 쓰는 제품(v4-2 §4-5). 「n일째」는 **매일 쓴다는 전제**의 숫자라, 주 1~2회 쓰는 제품에
+ * 붙으면 기록을 부풀려 읽게 한다. 그 자리에 **기록된 사진 날짜 수**가 선다.
+ *
+ * ⚠️ 「n회」는 실제 사용 횟수가 아니다 — 사진을 안 찍은 날의 사용은 정의상 없다(비목표).
+ */
+describe('사용 빈도 — 폼과 카드', () => {
+  const GUIDE = '촬영할 때 이 제품을 썼는지 물어봐요';
+
+  it('폼의 사용 빈도는 기본이 매일이고, 어휘는 둘뿐이다', () => {
+    setup();
+    fireEvent.click(btn('제품 추가'));
+
+    const select = screen.getByLabelText('사용 빈도') as HTMLSelectElement;
+    expect(select.value).toBe('daily');
+    expect([...select.options].map((o) => o.textContent)).toEqual(['매일', '가끔']);
+    // 매일이 기본이라 안내 줄도 없다 — 대부분의 등록이 한 글자도 안 바뀐다.
+    expect(screen.queryByText(GUIDE)).toBeNull();
+  });
+
+  it('「가끔」을 고르면 무슨 일이 생기는지 한 줄로 말하고, 저장 객체에 실린다', () => {
+    const { onChange } = setup();
+    fireEvent.click(btn('제품 추가'));
+    fireEvent.change(screen.getByLabelText('제품 이름'), { target: { value: '팩' } });
+
+    fireEvent.change(screen.getByLabelText('사용 빈도'), { target: { value: 'occasional' } });
+    expect(screen.getByText(GUIDE)).toBeTruthy();
+
+    fireEvent.click(btn('저장'));
+    expect(onChange.mock.calls[0][0][0].frequency).toBe('occasional');
+  });
+
+  it('매일로 저장하면 daily가 명시로 실린다 — 어휘 밖 값이 조용히 새지 않는다', () => {
+    const { onChange } = setup();
+    fireEvent.click(btn('제품 추가'));
+    fireEvent.change(screen.getByLabelText('제품 이름'), { target: { value: '로션' } });
+
+    fireEvent.click(btn('저장'));
+
+    expect(onChange.mock.calls[0][0][0].frequency).toBe('daily');
+  });
+
+  it('수정 폼은 저장된 빈도로 열린다', () => {
+    setup([p({ name: '팩', frequency: 'occasional' })]);
+    fireEvent.click(btn('팩 수정'));
+
+    expect((screen.getByLabelText('사용 빈도') as HTMLSelectElement).value).toBe('occasional');
+  });
+
+  it('카드: 가끔 제품은 기록된 날 수를 「n회」로 센다 — 오늘 것만 세면 안 된다', () => {
+    // ⚠️ 오늘(8/29)이 아닌 날이 섞여 있다 — `usage[date]` 하나만 보는 구현은 여기서 죽는다.
+    setup([p({ name: '팩', frequency: 'occasional' })], {
+      usage: { '2026-08-10': ['p1'], '2026-08-20': ['p1', 'p2'], '2026-08-25': ['p2'], '2026-08-28': [] },
+    });
+
+    expect(screen.getByText('2')).toBeTruthy();
+    expect(screen.getByText('회')).toBeTruthy();
+    // 「n일째」는 매일 쓴다는 전제의 숫자라 이 카드에는 서면 안 된다.
+    expect(screen.queryByText('일째')).toBeNull();
+    expect(screen.getByText('가끔')).toBeTruthy();
+  });
+
+  it('카드: 기록이 0건이면 「0회」다 — 아직 기록이 없다는 사실 그대로다', () => {
+    setup([p({ name: '팩', frequency: 'occasional' })]);
+
+    expect(screen.getByText('0')).toBeTruthy();
+    expect(screen.getByText('회')).toBeTruthy();
+  });
+
+  it('카드: 종료된 가끔 제품도 「n회」다 — 로그가 안 늘어 자연히 자라지 않는다', () => {
+    setup([p({ name: '팩', frequency: 'occasional', endDate: '2026-08-20' })], {
+      usage: { '2026-08-10': ['p1'], '2026-08-19': ['p1'] },
+    });
+
+    expect(screen.getByText('2')).toBeTruthy();
+    expect(screen.getByText('회')).toBeTruthy();
+    expect(screen.queryByText('일째')).toBeNull();
+  });
+
+  it('카드: 매일 제품과 필드 없는 옛 제품은 0 변경이다 — 「n일째」 그대로', () => {
+    setup([p({ name: '로션', frequency: 'daily' }), p({ id: 'p2', name: '토너' })], {
+      usage: { '2026-08-10': ['p1', 'p2'] },
+    });
+
+    // 8/01 시작, 오늘 8/29 → 29일째. 둘 다 같은 숫자라 하나면 족하다.
+    expect(screen.getAllByText('29')).toHaveLength(2);
+    expect(screen.getAllByText('일째')).toHaveLength(2);
+    expect(screen.queryByText('회')).toBeNull();
+    expect(screen.queryByText('가끔')).toBeNull();
   });
 });
 

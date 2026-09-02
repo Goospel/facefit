@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { BASE_FPS } from '../logic/timelapse';
 import { listPhotos, type FacePhoto as Photo } from '../photoStore';
-import type { Product } from '../storage';
+import type { Product, Usage } from '../storage';
 import { Timelapse } from './Timelapse';
 
 /**
@@ -44,10 +44,10 @@ const product = (over: Partial<Product> = {}): Product => ({
   ...over,
 });
 
-function setup(dates: string[], products: Product[] = []) {
+function setup(dates: string[], products: Product[] = [], usage: Usage = {}) {
   vi.mocked(listPhotos).mockResolvedValue(dates.map(photo));
   const onClose = vi.fn();
-  const view = render(<Timelapse products={products} onClose={onClose} />);
+  const view = render(<Timelapse products={products} usage={usage} onClose={onClose} />);
   return { onClose, ...view };
 }
 
@@ -247,5 +247,53 @@ describe('제품 구간 바', () => {
 
     // 마지막 프레임은 오른쪽 끝이다 — 안 그러면 막대와 사진이 딴 이야기를 한다.
     expect((screen.getByTestId('playhead') as HTMLElement).style.left).toBe('100%');
+  });
+});
+
+/**
+ * 프레임 배지의 사용 로그(v4-2 §4-6). **이 사진이 팩을 한 다음인지 안 한 다음인지**가
+ * 여기서 읽힌다 — 그 대조가 이 앱이 답하려는 질문이다.
+ *
+ * ⚠️ **3상을 셋 다 다르게 적는다**: 썼다 / 「쓴 것 없음」 / 아무 말도 안 함(기록 없음).
+ * 안 쓴 날과 안 물어본 날이 같은 글자로 뜨면, 안 쓴 날의 사진이 대조군 노릇을 못 한다.
+ */
+describe('프레임 배지 — 이 사진 전에 쓴 것', () => {
+  const DATES = ['2026-08-01', '2026-08-06', '2026-08-11'];
+  const mask = product({ id: 'm1', name: '팩', category: 'mask', frequency: 'occasional' });
+
+  it('그날 쓴 제품이 있으면 날짜 옆에 이름을 단다', async () => {
+    setup(DATES, [mask], { '2026-08-06': ['m1'] });
+    await screen.findByRole('slider');
+
+    fireEvent.change(slider(), { target: { value: '1' } });
+
+    expect(screen.getByText('8월 6일 · 팩')).toBeTruthy();
+  });
+
+  it('빈 배열이면 「쓴 것 없음」이다 — 물어봤고 안 썼다는 사실이다', async () => {
+    setup(DATES, [mask], { '2026-08-06': [] });
+    await screen.findByRole('slider');
+
+    fireEvent.change(slider(), { target: { value: '1' } });
+
+    expect(screen.getByText('8월 6일 · 쓴 것 없음')).toBeTruthy();
+  });
+
+  it('키가 없으면 날짜만 적는다 — 안 물어본 날에 「없음」을 적으면 거짓말이다', async () => {
+    setup(DATES, [mask], { '2026-08-01': ['m1'] });
+    await screen.findByRole('slider');
+
+    fireEvent.change(slider(), { target: { value: '1' } });
+
+    expect(screen.getByText('8월 6일')).toBeTruthy();
+  });
+
+  it('지운 제품의 id만 남았으면 「쓴 것 없음」이다 — 이름을 못 찾는다', async () => {
+    setup(DATES, [], { '2026-08-06': ['사라진id'] });
+    await screen.findByRole('slider');
+
+    fireEvent.change(slider(), { target: { value: '1' } });
+
+    expect(screen.getByText('8월 6일 · 쓴 것 없음')).toBeTruthy();
   });
 });

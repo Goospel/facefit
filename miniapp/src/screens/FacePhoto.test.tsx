@@ -8,7 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { captureJpeg } from '../logic/capture';
 import { isNotifySupported, requestNotifyAgreement } from '../notify';
 import { listPhotos, openPhotoDb, savePhoto, type FacePhoto as Photo } from '../photoStore';
-import { isNotifyPrompted, saveNotifyPrompted, todayKey } from '../storage';
+import { isNotifyPrompted, saveNotifyPrompted, todayKey, type Product, type Usage } from '../storage';
 import { FacePhoto } from './FacePhoto';
 
 /**
@@ -89,15 +89,23 @@ const shot = { blob: new Blob(['jpeg'], { type: 'image/jpeg' }), width: 960, hei
 function setup(over: Partial<Parameters<typeof FacePhoto>[0]> = {}) {
   const onClose = vi.fn();
   const onNote = vi.fn();
+  const onUsage = vi.fn();
   const props = {
     onClose,
     onNote,
+    onUsage,
+    /*
+      기본은 **가끔 제품이 하나도 없는 상태**다 — 그래야 기존 케이스가 한 줄도 안 바뀌고
+      그대로 통과한다. 통과하지 못하면 그 자체가 신호다(칩 블록이 조건 없이 그려졌다).
+    */
+    products: [] as Product[],
+    usage: {} as Usage,
     media: { getUserMedia: OK(fakeStream().stream) },
     idb: new IDBFactory() as IDBFactory,
     ...over,
   };
   const view = render(<FacePhoto {...props} />);
-  return { onClose, onNote, capture: vi.mocked(captureJpeg), ...view };
+  return { onClose, onNote, onUsage, capture: vi.mocked(captureJpeg), ...view };
 }
 
 /**
@@ -162,6 +170,22 @@ function comeBack() {
  */
 async function advance(ms: number) {
   for (let left = ms; left > 0; left -= 250) await vi.advanceTimersByTimeAsync(Math.min(250, left));
+}
+
+/**
+ * 찍고 저장까지 성공시켜 **관찰 스텝을 연다.** 관찰 1문항과 사용 로그 칩이 같은 화면이라
+ * (v4-2 §3-1) 두 describe가 이 하나를 나눠 쓴다.
+ */
+async function saveOk(over: Partial<Parameters<typeof FacePhoto>[0]> = {}) {
+  const r = setup(over);
+  await screen.findByRole('button', { name: '촬영' });
+  vi.useFakeTimers();
+  fireEvent.click(btn('촬영'));
+  await advance(600);
+  vi.useRealTimers();
+  await screen.findByRole('button', { name: '저장' });
+  fireEvent.click(btn('저장'));
+  return r;
 }
 
 describe('촬영 화면 — 카메라 실패 세 갈래', () => {
@@ -770,18 +794,6 @@ describe('촬영 화면 — 확인과 저장', () => {
  * 단정하지 않는다.
  */
 describe('촬영 화면 — 저장 직후 관찰 1문항', () => {
-  async function saveOk(over: Partial<Parameters<typeof FacePhoto>[0]> = {}) {
-    const r = setup(over);
-    await screen.findByRole('button', { name: '촬영' });
-    vi.useFakeTimers();
-    fireEvent.click(btn('촬영'));
-    await advance(600);
-    vi.useRealTimers();
-    await screen.findByRole('button', { name: '저장' });
-    fireEvent.click(btn('저장'));
-    return r;
-  }
-
   it('저장에 성공하면 닫는 대신 오늘 피부를 묻는다', async () => {
     const { onClose } = await saveOk();
 
@@ -849,6 +861,107 @@ describe('촬영 화면 — 저장 직후 관찰 1문항', () => {
     await screen.findByText('오늘 피부, 어때 보였나요?');
 
     expect(stop).toHaveBeenCalled();
+  });
+});
+
+/**
+ * 사용 로그 칩(v4-2 §4-4). **관찰 1문항과 같은 스텝이다** — 관찰 답·건너뛰기가 이미 「이
+ * 화면을 나간다」는 버튼이라 제출 버튼이 새로 안 생기고, **안 쓴 날의 탭 수가 0 증가**다.
+ *
+ * 여기서 잠그는 것 셋: **가끔 제품만 물어본다**(매일 제품은 대조군이 없다) ·
+ * **어느 출구로 나가도 저장된다**(건너뛰기로 나간 날은 「안 썼다」다 — §3-4) ·
+ * **오늘 로그가 있으면 켜진 채로 뜬다**(같은 날 다시 찍기가 정정 경로다 — §4-9).
+ */
+describe('촬영 화면 — 사용 로그 칩', () => {
+  const ASK = '어제부터 지금까지 쓴 게 있나요?';
+
+  const p = (over: Partial<Product> = {}): Product => ({
+    id: 'p1',
+    name: '팩',
+    category: 'mask',
+    startDate: '2020-01-01',
+    frequency: 'occasional',
+    ...over,
+  });
+
+  it('가끔 제품이 오늘 사용 중이면 그 이름의 체크 칩이 선다', async () => {
+    await saveOk({ products: [p()] });
+    await screen.findByText('오늘 피부, 어때 보였나요?');
+
+    expect(screen.getByText(ASK)).toBeTruthy();
+    const chip = screen.getByRole('checkbox', { name: '팩' });
+    expect(chip.getAttribute('aria-checked')).toBe('false');
+  });
+
+  it('매일 제품만 있으면 질문도 칩도 없고 onUsage를 아예 안 부른다 — 키 없음 = 안 물어봄', async () => {
+    // 지금 사용자 대부분의 화면이 **0 변경**이라야 한다.
+    const { onUsage } = await saveOk({ products: [p({ frequency: 'daily' }), p({ id: 'p2', frequency: undefined })] });
+    await screen.findByText('오늘 피부, 어때 보였나요?');
+
+    expect(screen.queryByText(ASK)).toBeNull();
+    expect(screen.queryByRole('checkbox')).toBeNull();
+
+    fireEvent.click(btn('좋아졌어요'));
+    expect(onUsage).not.toHaveBeenCalled();
+  });
+
+  it('종료된 제품과 아직 시작 안 한 제품은 칩에 안 선다 — 구간 규칙 그대로다', async () => {
+    await saveOk({
+      products: [
+        p({ id: 'p1', name: '끝난팩', endDate: '2020-02-01' }),
+        p({ id: 'p2', name: '내일팩', startDate: '2099-01-01' }),
+        p({ id: 'p3', name: '지금팩' }),
+      ],
+    });
+    await screen.findByText('오늘 피부, 어때 보였나요?');
+
+    expect(screen.queryByRole('checkbox', { name: '끝난팩' })).toBeNull();
+    expect(screen.queryByRole('checkbox', { name: '내일팩' })).toBeNull();
+    expect(screen.getByRole('checkbox', { name: '지금팩' })).toBeTruthy();
+  });
+
+  it('칩을 켜고 답을 고르면 오늘 키로 로그가 남고 관찰도 남는다', async () => {
+    const { onUsage, onNote } = await saveOk({ products: [p()] });
+    await screen.findByText('오늘 피부, 어때 보였나요?');
+
+    fireEvent.click(screen.getByRole('checkbox', { name: '팩' }));
+    fireEvent.click(btn('좋아졌어요'));
+
+    expect(onUsage).toHaveBeenCalledTimes(1);
+    // 사진·관찰과 **같은 키**라야 대조가 문자열 비교 하나로 끝난다(§3-2).
+    expect(onUsage.mock.calls[0]).toEqual([todayKey(), ['p1']]);
+    expect(onNote).toHaveBeenCalledTimes(1);
+    expect(onUsage.mock.invocationCallOrder[0]).toBeLessThan(onNote.mock.invocationCallOrder[0]);
+  });
+
+  it('아무 칩도 안 켜고 건너뛰면 「안 썼다」로 남는다 — 빈 배열이 그 사실이다', async () => {
+    // ⚠️ 이 경로가 죽으면 안 쓴 날이 영영 기록되지 않아, 그 사진이 대조군 노릇을 못 한다.
+    const { onUsage, onNote } = await saveOk({ products: [p()] });
+    await screen.findByText('오늘 피부, 어때 보였나요?');
+
+    fireEvent.click(btn('건너뛰기'));
+
+    expect(onUsage.mock.calls[0]).toEqual([todayKey(), []]);
+    // 건너뛰기의 뜻은 그대로다 — 관찰은 기록하지 않는다.
+    expect(onNote).not.toHaveBeenCalled();
+  });
+
+  it('오늘 로그가 이미 있으면 켜진 채로 뜬다 — 다시 찍기가 곧 같은 날 정정 경로다', async () => {
+    await saveOk({ products: [p()], usage: { [todayKey()]: ['p1'] } });
+    await screen.findByText('오늘 피부, 어때 보였나요?');
+
+    expect(screen.getByRole('checkbox', { name: '팩' }).getAttribute('aria-checked')).toBe('true');
+  });
+
+  it('켰다 끄면 빈 배열로 저장된다 — 잘못 누른 것을 그 자리에서 되돌린다', async () => {
+    const { onUsage } = await saveOk({ products: [p()] });
+    await screen.findByText('오늘 피부, 어때 보였나요?');
+
+    fireEvent.click(screen.getByRole('checkbox', { name: '팩' }));
+    fireEvent.click(screen.getByRole('checkbox', { name: '팩' }));
+    fireEvent.click(btn('그대로예요'));
+
+    expect(onUsage.mock.calls[0]).toEqual([todayKey(), []]);
   });
 });
 

@@ -25,6 +25,7 @@ import {
   loadLastBackupAt,
   loadNotes,
   loadProducts,
+  loadUsage,
   saveBackupDirty,
   saveBackupEnabled,
   saveBackupPrompted,
@@ -33,9 +34,12 @@ import {
   saveNotes,
   saveOnboarded,
   saveProducts,
+  saveUsage,
+  saveUsageAll,
   todayKey,
   type Notes,
   type Product,
+  type Usage,
   type Verdict,
 } from './storage';
 
@@ -77,6 +81,8 @@ export function App() {
   const [view, setView] = useState<'shoot' | 'timelapse' | 'restore' | null>(null);
   const [products, setProducts] = useState(loadProducts);
   const [notes, setNotes] = useState(loadNotes);
+  /** 사용 로그(v4-2). 제품·관찰과 같은 자리에 든다 — 촬영·제품·타임랩스가 나눠 본다. */
+  const [usage, setUsage] = useState(loadUsage);
 
   /**
    * 백업(v3 §3-4). **쓸 수 있는가**는 렌더마다 안 바뀌므로 한 번만 묻는다 — 이 값이 거짓이면
@@ -105,14 +111,14 @@ export function App() {
    * 지금 상태를 통째로 올린다. **어떤 실패도 던지지 않는다** — 실패는 `backupDirty`에만
    * 남고, 다음 앱 시작이 곧 재시도다(백오프 루프를 안 만드는 이유 — 설계 §3-3).
    */
-  async function pushBackup(nextProducts: Product[], nextNotes: Notes) {
+  async function pushBackup(nextProducts: Product[], nextNotes: Notes, nextUsage: Usage) {
     const key = await getBackupKey();
     // 키를 못 얻은 것도 **못 올린 것**이다 — 조용히 넘어가면 화면이 「켜짐」이라 말하면서
     // 실제로는 아무것도 안 올라간 상태가 된다.
     if (!key) return saveBackupDirty(true);
 
     const now = new Date().toISOString();
-    const ok = await uploadBackup(key, buildBackupBlob(nextProducts, nextNotes, now));
+    const ok = await uploadBackup(key, buildBackupBlob(nextProducts, nextNotes, nextUsage, now));
     saveBackupDirty(!ok);
     if (ok) {
       saveLastBackupAt(now);
@@ -125,7 +131,7 @@ export function App() {
     saveBackupEnabled(true);
     skipDebounce.current = true;
     setBackupEnabled(true);
-    void pushBackup(products, notes);
+    void pushBackup(products, notes, usage);
   }
 
   /** 끄기는 곧 **서버 데이터 삭제**다(설계 §3-3) — 그래야 문구를 믿을 수 있다. */
@@ -155,12 +161,21 @@ export function App() {
     setNotes(saveNote(day, verdict));
   }
 
+  /** 사진 한 장의 「이 전에 쓴 것」. 빈 배열도 **저장한다** — 「안 썼다」가 사실이라서다(§3-4). */
+  function saveUsageAnd(day: string, ids: string[]) {
+    setUsage(saveUsage(day, ids));
+  }
+
   /** 복원은 저장소에 쓴 뒤 **다시 읽어서** 화면에 올린다 — 로더의 방어를 그대로 태운다. */
   function applyRestore(blob: BackupBlob) {
     saveProducts(blob.products);
     saveNotes(blob.notes);
+    // ⚠️ `?? {}`가 요점이다 — **복원은 덮어쓰기다.** 옛 백업(로그 없음)으로 복원했는데 이 기기의
+    // 남은 로그가 살아 있으면, 복원한 기록에 찍지도 않은 사진의 로그가 섞인다.
+    saveUsageAll(blob.usage ?? {});
     setProducts(loadProducts());
     setNotes(loadNotes());
+    setUsage(loadUsage());
 
     // 복원했다는 것은 백업을 쓰겠다는 뜻이다 — 새 기기에서 다시 켜게 만들지 않는다.
     saveBackupEnabled(true);
@@ -177,7 +192,7 @@ export function App() {
   /** 밀린 업로드는 **앱을 여는 행위**가 재시도한다(설계 §3-3). */
   useEffect(() => {
     if (!isBackupEnabled() || !isBackupDirty()) return;
-    void pushBackup(loadProducts(), loadNotes());
+    void pushBackup(loadProducts(), loadNotes(), loadUsage());
     // 마운트에서 한 번만. products/notes를 의존성에 넣으면 아래 디바운스와 겹친다.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -189,10 +204,10 @@ export function App() {
       skipDebounce.current = false;
       return;
     }
-    const timer = setTimeout(() => void pushBackup(products, notes), BACKUP_DEBOUNCE_MS);
+    const timer = setTimeout(() => void pushBackup(products, notes, usage), BACKUP_DEBOUNCE_MS);
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [products, notes, backupEnabled]);
+  }, [products, notes, usage, backupEnabled]);
 
   // 복원은 온보딩 **앞**에 온다 — 새 기기의 첫 화면에서 들어오는 경로라 아직 온보딩 전이다.
   if (view === 'restore') return <Restore onClose={() => setView(null)} onRestored={applyRestore} />;
@@ -211,8 +226,17 @@ export function App() {
   }
 
   // 전체화면에서는 탭바가 없다 — 카메라를 켜 놓고 딴 화면으로 샐 이유가 없다.
-  if (view === 'shoot') return <FacePhoto onClose={() => setView(null)} onNote={saveNoteAnd} />;
-  if (view === 'timelapse') return <Timelapse products={products} onClose={() => setView(null)} />;
+  if (view === 'shoot')
+    return (
+      <FacePhoto
+        products={products}
+        usage={usage}
+        onClose={() => setView(null)}
+        onNote={saveNoteAnd}
+        onUsage={saveUsageAnd}
+      />
+    );
+  if (view === 'timelapse') return <Timelapse products={products} usage={usage} onClose={() => setView(null)} />;
 
   return (
     <>
@@ -223,6 +247,7 @@ export function App() {
           onChange={saveProductsAnd}
           date={date}
           notes={notes}
+          usage={usage}
           onShoot={() => setView('shoot')}
           /* 백업이 지키는 것이 제품·관찰이라 스위치도 그 옆에 산다(1회 제안도 이 탭에서 뜬다). */
           backup={
