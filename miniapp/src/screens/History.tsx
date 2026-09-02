@@ -213,6 +213,7 @@ function DayCard({
         {photo && <DayPhoto date={date} blob={photo.blob} />}
 
         {/* 답이 없으면 **줄 자체가 없다.** 「없음」을 적으면 안 한 것이 실패처럼 보인다. */}
+        {/* 색점만으로는 색각 이상인 사람에게 아무 표시도 없는 것과 같다 — 시트에서는 반드시 글자로 다시 말한다. */}
         {verdict && (
           <p data-testid="sheet-note" style={{ ...ui.sub, margin: '12px 0 0' }}>
             {VERDICT_KO[verdict]}

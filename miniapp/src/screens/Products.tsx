@@ -1,11 +1,13 @@
 import { useEffect, useState } from 'react';
 
+import { Icon } from '../components/Icon';
 import { formatBackupTime } from '../logic/backup';
 import { daysBetween } from '../logic/calendar';
 import { keepsSnapshot, searchProducts, type Suggestion } from '../logic/mfds';
 import { CATEGORY_KO, isActive, sortProducts } from '../logic/products';
-import { CATEGORIES, newId, type Category, type MfdsSnapshot, type Product } from '../storage';
+import { CATEGORIES, newId, VERDICT_KO, type Category, type MfdsSnapshot, type Notes, type Product, type Verdict } from '../storage';
 import { ui } from '../ui';
+import { usePhotos } from './usePhotos';
 
 /**
  * 제품 탭 — 수동 CRUD.
@@ -24,6 +26,8 @@ export function Products({
   products,
   onChange,
   date,
+  notes,
+  onShoot,
   backup,
 }: {
   products: Product[];
@@ -31,6 +35,10 @@ export function Products({
   onChange: (next: Product[]) => void;
   /** 오늘. 「사용 중」 판정과 「오늘까지 쓰고 종료」가 같은 값을 봐야 한다. */
   date: string;
+  /** 오늘의 관찰 답. 상태 줄이 「찍었어요」 아래에 이 문구를 단다. */
+  notes: Notes;
+  /** 상태 줄의 유일한 행동 — 촬영 전체화면을 연다(닫으면 이 탭으로 돌아온다). */
+  onShoot: () => void;
   /**
    * 기록 백업(v3 §3-4). **`undefined`면 표면 자체가 없다** — 쓸 수 없는 기기에 스위치만
    * 남기면 「눌렀는데 아무 일도 없다」가 된다(알림 버튼과 같은 규율). 그 판단은 App이 한다.
@@ -38,6 +46,10 @@ export function Products({
   backup?: { enabled: boolean; lastBackupAt: string | null; onToggle: () => void };
 }) {
   const [editing, setEditing] = useState<Editing>(null);
+
+  /** 「오늘 찍었나」만 묻는다. 사진 DB 수명은 이 화면 수명에 갇힌다(App 설계 §1-4). */
+  const { photos } = usePhotos();
+  const todayPhoto = photos.find((p) => p.date === date);
 
   const sorted = sortProducts(products, date);
   const active = sorted.filter((p) => isActive(p, date));
@@ -66,6 +78,8 @@ export function Products({
   return (
     <main style={ui.page}>
       <h1 style={ui.h1}>제품</h1>
+
+      <TodayStrip shot={Boolean(todayPhoto)} verdict={notes[date]} onShoot={onShoot} />
 
       {editing ? (
         <ProductForm
@@ -135,6 +149,41 @@ export function Products({
  * 상태**만은 색까지 바꾼다 — 사용자는 지켜진다고 믿는데 실제로는 아무것도 안 올라간,
  * 이 기능에서 제일 위험한 상태라 회색으로 두면 정상처럼 읽힌다.
  */
+/**
+ * 오늘 상태 줄(v4-1 §3-2). **사진은 절대 안 그린다** — 이 탭이 첫 화면이 된 이유가 「부르지
+ * 않았는데 얼굴이 보인다」였다. 찍었는지와 관찰 답만 말하고, 오른쪽은 행동이다.
+ *
+ * 알림 행·백업 행과 같은 가족(카드 + 가로 flex + 오른쪽 글자). **행 전체가 버튼**이고 두 상태
+ * 모두 촬영을 연다 — 「보기」로 오늘 탭에 보내는 안은 한 행에 행동이 둘이라 버렸다. 「다시 찍기」가
+ * 덮어쓰기임은 오늘 탭의 같은 문구가 이미 가르친다.
+ *
+ * DB가 열리기 전 한 프레임은 「안 찍었어요」로 뜰 수 있다 — 오늘 탭이 첫 화면이던 때와 같은
+ * 깜빡임이라 받아들인다.
+ */
+function TodayStrip({ shot, verdict, onShoot }: { shot: boolean; verdict: Verdict | undefined; onShoot: () => void }) {
+  return (
+    <button
+      aria-label={shot ? '오늘 얼굴 다시 찍기' : '오늘 얼굴 찍기'}
+      onClick={onShoot}
+      style={{ ...ui.card, display: 'flex', alignItems: 'center', gap: 12, width: '100%', textAlign: 'left', color: 'var(--blue)' }}
+    >
+      {/* 오늘 탭 아이콘과 같은 그림이라 「저 줄이 저 화면을 연다」가 눈으로 이어진다. */}
+      <Icon name="face" />
+      <span style={{ flex: 1 }}>
+        <span style={{ display: 'block', fontSize: 15, fontWeight: 600, color: 'var(--text)' }}>
+          {shot ? '오늘 찍었어요' : '오늘 아직 안 찍었어요'}
+        </span>
+        <span style={{ display: 'block', fontSize: 13, marginTop: 2, color: 'var(--text-sub)' }}>
+          {shot ? (verdict ? VERDICT_KO[verdict] : "'오늘' 탭에서 볼 수 있어요") : '지난 사진에 얼굴을 겹쳐 같은 구도로 찍어요'}
+        </span>
+      </span>
+      <span aria-hidden style={{ fontSize: 14, fontWeight: 600, color: 'var(--blue)' }}>
+        {shot ? '다시 찍기' : '찍기'}
+      </span>
+    </button>
+  );
+}
+
 function BackupToggle({
   enabled,
   lastBackupAt,

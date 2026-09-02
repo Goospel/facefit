@@ -3,7 +3,8 @@ import { act, cleanup, fireEvent, render, screen, within } from '@testing-librar
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { Suggestion } from '../logic/mfds';
-import type { MfdsSnapshot, Product } from '../storage';
+import { listPhotos, openPhotoDb, type FacePhoto as Photo } from '../photoStore';
+import type { MfdsSnapshot, Notes, Product } from '../storage';
 import { Products } from './Products';
 
 /**
@@ -14,6 +15,18 @@ const { searchProducts } = vi.hoisted(() => ({ searchProducts: vi.fn() }));
 // ⚠️ **네트워크만 목이다.** 같은 모듈의 `keepsSnapshot`은 진짜를 쓴다 — 규제 민감한 표시축의
 // 판정을 목으로 갈아 끼우면 화면 테스트가 그 규칙을 아예 안 재게 된다.
 vi.mock('../logic/mfds', async (orig) => ({ ...(await orig<typeof import('../logic/mfds')>()), searchProducts }));
+
+/**
+ * 사진 저장소도 목이다 — 이 화면은 「오늘 찍었나」만 묻고 사진 자체는 **그리지 않는다.**
+ * `openPhotoDb`·`listPhotos`를 setup에서 매번 세운다(`restoreAllMocks`가 구현을 지워도 안전하게).
+ */
+vi.mock('../photoStore', async (orig) => ({
+  ...(await orig<typeof import('../photoStore')>()),
+  openPhotoDb: vi.fn(),
+  listPhotos: vi.fn(),
+}));
+
+const photo = (date: string): Photo => ({ date, blob: new Blob([date]), capturedAt: 1, width: 960, height: 1280 });
 
 /**
  * 제품 탭 — 수동 CRUD.
@@ -36,15 +49,60 @@ const p = (over: Partial<Product> = {}): Product => ({
   ...over,
 });
 
-function setup(products: Product[] = []) {
+function setup(products: Product[] = [], over: { photos?: string[]; notes?: Notes } = {}) {
+  vi.mocked(openPhotoDb).mockResolvedValue({ close: () => {} } as unknown as import('../photoStore').PhotoDb);
+  vi.mocked(listPhotos).mockResolvedValue((over.photos ?? []).map(photo));
   const onChange = vi.fn<(next: Product[]) => void>();
-  const view = render(<Products products={products} onChange={onChange} date={TODAY} />);
-  return { onChange, ...view };
+  const onShoot = vi.fn();
+  const view = render(
+    <Products products={products} onChange={onChange} date={TODAY} notes={over.notes ?? {}} onShoot={onShoot} />,
+  );
+  return { onChange, onShoot, ...view };
 }
 
 const btn = (name: string | RegExp) => screen.getByRole('button', { name }) as HTMLButtonElement;
 
 beforeEach(() => vi.restoreAllMocks());
+
+/** 비동기 DB 목이 끝까지 돌게 한 틱 기다린다 — 안 기다리면 「안 찍었어요」가 초기 렌더로 늘 통과한다. */
+const flush = () => act(() => new Promise<void>((r) => setTimeout(r, 0)));
+
+describe('오늘 상태 줄 — 사진은 그리지 않는다', () => {
+  it('아직 안 찍었으면 찍자고 하고, 누르면 촬영을 연다', async () => {
+    const { onShoot } = setup();
+    await flush();
+
+    expect(screen.getByText('오늘 아직 안 찍었어요')).toBeTruthy();
+    fireEvent.click(btn('오늘 얼굴 찍기'));
+    expect(onShoot).toHaveBeenCalledTimes(1);
+  });
+
+  it('찍었으면 관찰 답을 말하고, 오른쪽은 「다시 찍기」다', async () => {
+    const { onShoot } = setup([], { photos: [TODAY], notes: { [TODAY]: 'better' } });
+
+    expect(await screen.findByText('오늘 찍었어요')).toBeTruthy();
+    expect(screen.getByText('좋아졌어요')).toBeTruthy();
+    fireEvent.click(btn('오늘 얼굴 다시 찍기'));
+    expect(onShoot).toHaveBeenCalledTimes(1);
+  });
+
+  it('찍었는데 답이 없으면 오늘 탭을 가리킨다 — 「미응답」을 적으면 건너뛴 것이 실패로 보인다', async () => {
+    setup([], { photos: [TODAY] });
+    expect(await screen.findByText("'오늘' 탭에서 볼 수 있어요")).toBeTruthy();
+  });
+
+  it('어제 사진은 오늘 사진이 아니다', async () => {
+    setup([], { photos: ['2026-08-28'] });
+    await flush();
+    expect(screen.getByText('오늘 아직 안 찍었어요')).toBeTruthy();
+  });
+
+  it('어느 상태에도 <img>가 없다 — 얼굴은 부르기 전엔 안 보인다', async () => {
+    const { container } = setup([], { photos: [TODAY], notes: { [TODAY]: 'same' } });
+    await screen.findByText('오늘 찍었어요');
+    expect(container.querySelector('img')).toBeNull();
+  });
+});
 
 describe('제품 목록', () => {
   it('아무것도 없으면 등록을 권한다', () => {

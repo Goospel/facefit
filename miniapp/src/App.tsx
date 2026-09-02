@@ -218,6 +218,8 @@ export function App() {
           products={products}
           onChange={saveProductsAnd}
           date={date}
+          notes={notes}
+          onShoot={() => setView('shoot')}
           /* 백업이 지키는 것이 제품·관찰이라 스위치도 그 옆에 산다(1회 제안도 이 탭에서 뜬다). */
           backup={
             backupSupported
