@@ -22,6 +22,7 @@
      각 항목의 frontmatter(summary)에서 재생성합니다. 내용을 바꾸려면 그 항목의
      summary를 고치세요(단일 출처). 최신 항목이 위. -->
 
+- [T-016](troubleshooting/T-016.md) · visibility hidden으로 자리만 지킨 스위치를 getByRole이 hidden true로도 못 찾았다 — 접근성 트리에서 빠진 요소는 이름 계산 자체가 빈 문자열이라 name 옵션과 영영 안 맞는다
 - [T-015](troubleshooting/T-015.md) · <label> 안에 안내 한 줄을 넣었더니 그 칸의 접근성 이름이 「사용 빈도촬영할 때…」로 붙어 getByLabelText가 못 찾았다 — 스크린리더가 듣는 이름도 같이 오염된다
 - [T-014](troubleshooting/T-014.md) · 성공 응답을 준 쓰기가 값을 안 바꿨다 — miniapp_update_basic_info가 에러 없이 no-op이라, 되읽지 않았으면 「고쳤다」고 보고할 뻔했다
 - [T-013](troubleshooting/T-013.md) · 앱 밖에서 하라는 안내는 「어디서」까지 적어야 실행 가능하다 — 「토스 알림 설정에서 끌 수 있어요」만 적었더니 실기기에서 못 껐고, 앱에는 끌 수단이 아예 없었다

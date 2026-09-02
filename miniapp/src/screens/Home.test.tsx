@@ -236,6 +236,39 @@ describe('아침 알림 진입점', () => {
     expect(sub()).toContain('열 수 없어요');
     expect(screen.getByTestId('notify-sub').getAttribute('style')).toContain('--amber');
   });
+
+  /*
+    ⚠️ **이 행은 스위치가 아니라 행동이다**(위 주석). 그런데 백업 스위치와 같은 카드 가족이라
+    오른쪽 작은 글자만으로는 구별이 안 됐다 — 알약(테두리 두른 캡슐)은 「누르면 무언가
+    열린다」를 그림으로 말한다. 반대로 **이미 켜진 뒤에는 알약을 걷는다**: 켜진 상태에 알약을
+    두면 도로 「눌러야 할 것」으로 읽힌다.
+  */
+  it('아직 안 켠 상태의 오른쪽은 누를 것처럼 생긴 알약이다', async () => {
+    setup();
+
+    const right = await screen.findByTestId('notify-right');
+    expect(right.textContent).toContain('받기');
+    expect(right.getAttribute('style')).toContain('999');
+  });
+
+  it('켜진 뒤에는 알약이 아니라 체크 표식과 「켜짐」이다 — 켜진 것을 또 누르라고 하지 않는다', async () => {
+    setup();
+
+    await press('newAgreement');
+
+    const right = screen.getByTestId('notify-right');
+    expect(right.textContent).toContain('켜짐');
+    expect(right.querySelector('svg')).toBeTruthy();
+    expect(right.getAttribute('style')).not.toContain('999');
+  });
+
+  it('열지 못했으면 알약을 그대로 둔다 — 다시 누르라는 뜻이 맞다', async () => {
+    setup();
+
+    await press('unavailable');
+
+    expect(screen.getByTestId('notify-right').getAttribute('style')).toContain('999');
+  });
 });
 
 describe('사용 중 제품 요약', () => {
