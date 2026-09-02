@@ -49,9 +49,13 @@ import {
 
 type Tab = 'home' | 'products' | 'history';
 
+/**
+ * 순서가 곧 시작 화면이다(v4-1 §3-1). **제품이 첫 자리** — 오늘 탭이 첫 화면이면 부르지 않은
+ * 얼굴 사진이 앱을 열자마자 뜬다(2026-09-02 실기기 피드백). 오늘 탭 자체는 한 글자도 안 바뀐다.
+ */
 const TABS: { key: Tab; label: string; icon: IconName }[] = [
-  { key: 'home', label: '오늘', icon: 'face' },
   { key: 'products', label: '제품', icon: 'bottle' },
+  { key: 'home', label: '오늘', icon: 'face' },
   { key: 'history', label: '기록', icon: 'calendar' },
 ];
 
@@ -63,7 +67,7 @@ const BACKUP_DEBOUNCE_MS = 5000;
 
 export function App() {
   const [onboarded, setOnboarded] = useState(isOnboarded);
-  const [tab, setTab] = useState<Tab>('home');
+  const [tab, setTab] = useState<Tab>('products');
   /**
    * 전체화면. **값 하나가 「촬영이냐 타임랩스냐 아니냐」를 다 말한다** — boolean 둘로 두면
    * 둘 다 켜진 상태가 생기고, 그때 무엇을 그릴지 화면이 정해야 한다.
@@ -218,6 +222,8 @@ export function App() {
           products={products}
           onChange={saveProductsAnd}
           date={date}
+          notes={notes}
+          onShoot={() => setView('shoot')}
           /* 백업이 지키는 것이 제품·관찰이라 스위치도 그 옆에 산다(1회 제안도 이 탭에서 뜬다). */
           backup={
             backupSupported

@@ -7,8 +7,8 @@ import { ICONS } from './Icon';
  * 통과하고 화면에 빈 칸으로 뜬다** — 그걸 여기서 막는다.
  */
 describe('아이콘', () => {
-  it('탭 셋이 모두 있다', () => {
-    expect(Object.keys(ICONS).sort()).toEqual(['bottle', 'calendar', 'face']);
+  it('탭 셋과 셰브론이 모두 있다', () => {
+    expect(Object.keys(ICONS).sort()).toEqual(['bottle', 'calendar', 'chevron', 'face']);
   });
 
   it('이름만 있고 그림이 빈 아이콘이 없다', () => {

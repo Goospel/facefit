@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 
 import { addMonth, formatYm, monthCells, monthOf, type Ym } from '../logic/calendar';
 import { clearPhotos, deletePhoto, type FacePhoto, type PhotoDb } from '../photoStore';
-import { todayKey, type Notes, type Verdict } from '../storage';
+import { todayKey, VERDICT_KO, type Notes, type Verdict } from '../storage';
 import { ui } from '../ui';
 import { LOCAL_ONLY, useObjectUrl, usePhotos } from './usePhotos';
 
@@ -19,17 +19,6 @@ import { LOCAL_ONLY, useObjectUrl, usePhotos } from './usePhotos';
 
 /** 일요일 시작 — 국내 달력 관례다. `monthCells`의 앞 빈칸도 같은 기준으로 센다. */
 const WEEKDAYS = ['일', '월', '화', '수', '목', '금', '토'];
-
-/**
- * 관찰 답의 표시 문구. **촬영 화면의 버튼 라벨과 같은 말이라야** 「내가 뭘 눌렀지」가
- * 성립한다. 색점만으로는 색각 이상인 사람에게 아무 표시도 없는 것과 같아서, 시트에서는
- * 반드시 글자로 다시 말한다.
- */
-const VERDICT_KO: Record<Verdict, string> = {
-  better: '좋아졌어요',
-  same: '그대로예요',
-  worse: '나빠졌어요',
-};
 
 export function History({
   notes,
@@ -224,6 +213,7 @@ function DayCard({
         {photo && <DayPhoto date={date} blob={photo.blob} />}
 
         {/* 답이 없으면 **줄 자체가 없다.** 「없음」을 적으면 안 한 것이 실패처럼 보인다. */}
+        {/* 색점만으로는 색각 이상인 사람에게 아무 표시도 없는 것과 같다 — 시트에서는 반드시 글자로 다시 말한다. */}
         {verdict && (
           <p data-testid="sheet-note" style={{ ...ui.sub, margin: '12px 0 0' }}>
             {VERDICT_KO[verdict]}

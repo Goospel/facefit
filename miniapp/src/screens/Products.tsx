@@ -1,17 +1,22 @@
 import { useEffect, useState } from 'react';
 
+import { Icon } from '../components/Icon';
 import { formatBackupTime } from '../logic/backup';
 import { daysBetween } from '../logic/calendar';
 import { keepsSnapshot, searchProducts, type Suggestion } from '../logic/mfds';
 import { CATEGORY_KO, isActive, sortProducts } from '../logic/products';
-import { CATEGORIES, newId, type Category, type MfdsSnapshot, type Product } from '../storage';
+import { CATEGORIES, newId, VERDICT_KO, type Category, type MfdsSnapshot, type Notes, type Product, type Verdict } from '../storage';
 import { ui } from '../ui';
+import { usePhotos } from './usePhotos';
 
 /**
  * 제품 탭 — 수동 CRUD.
  *
  * **지금 쓰는 것과 끝낸 것을 눈으로 가르는 것**이 이 탭에 오는 이유다. 한 줄로 섞어 놓으면
  * 「내가 지금 뭘 쓰고 있나」를 사람이 매번 날짜로 재구성해야 한다.
+ *
+ * **v4-1부터 이 탭이 첫 화면이다.** 맨 위 상태 줄이 「오늘 찍었나」에 사진 없이 답하고,
+ * 카드는 읽는 카드(카드 자체가 버튼)다 — 수정·종료·삭제는 폼 안에 산다.
  *
  * 검색은 안 만든다 — 개인 목록은 수십 개를 넘지 않는다(설계 §5-2). 날짜는 네이티브
  * `<input type="date">`가 받는다. 달력 위젯을 손으로 만들 이유가 없다.
@@ -24,6 +29,8 @@ export function Products({
   products,
   onChange,
   date,
+  notes,
+  onShoot,
   backup,
 }: {
   products: Product[];
@@ -31,6 +38,10 @@ export function Products({
   onChange: (next: Product[]) => void;
   /** 오늘. 「사용 중」 판정과 「오늘까지 쓰고 종료」가 같은 값을 봐야 한다. */
   date: string;
+  /** 오늘의 관찰 답. 상태 줄이 「찍었어요」 아래에 이 문구를 단다. */
+  notes: Notes;
+  /** 상태 줄의 유일한 행동 — 촬영 전체화면을 연다(닫으면 이 탭으로 돌아온다). */
+  onShoot: () => void;
   /**
    * 기록 백업(v3 §3-4). **`undefined`면 표면 자체가 없다** — 쓸 수 없는 기기에 스위치만
    * 남기면 「눌렀는데 아무 일도 없다」가 된다(알림 버튼과 같은 규율). 그 판단은 App이 한다.
@@ -38,6 +49,10 @@ export function Products({
   backup?: { enabled: boolean; lastBackupAt: string | null; onToggle: () => void };
 }) {
   const [editing, setEditing] = useState<Editing>(null);
+
+  /** 「오늘 찍었나」만 묻는다. 사진 DB 수명은 이 화면 수명에 갇힌다(App 설계 §1-4). */
+  const { photos } = usePhotos();
+  const todayPhoto = photos.find((p) => p.date === date);
 
   const sorted = sortProducts(products, date);
   const active = sorted.filter((p) => isActive(p, date));
@@ -65,32 +80,52 @@ export function Products({
 
   return (
     <main style={ui.page}>
-      <h1 style={ui.h1}>제품</h1>
+      <div style={{ display: 'flex', alignItems: 'center', margin: '4px 0 20px' }}>
+        <h1 style={{ ...ui.h1, margin: 0 }}>제품</h1>
+        <span style={ui.spacer} />
+        {/*
+          추가는 글자 버튼이다(v4-1 §3-5) — 메인 페이지 맨 위를 파란 덩어리가 차지할 이유가 없다.
+          목록이 비면 아래 빈 상태 블록의 큰 버튼이 대신 서고, 폼이 열리면 숨는다 — **언제나 0개
+          또는 1개**다. 접근성 이름은 「제품 추가」로 고정한다(보이는 글자 「추가」를 포함한다).
+        */}
+        {!editing && products.length > 0 && (
+          <button
+            aria-label="제품 추가"
+            style={{ ...ui.ghost, color: 'var(--blue)', fontWeight: 600, fontSize: 15 }}
+            onClick={() => setEditing('new')}
+          >
+            추가
+          </button>
+        )}
+      </div>
 
-      {editing ? (
+      <TodayStrip shot={Boolean(todayPhoto)} verdict={notes[date]} onShoot={onShoot} />
+
+      {editing && (
         <ProductForm
           initial={editing === 'new' ? null : editing}
           today={date}
           onSubmit={submit}
           onCancel={() => setEditing(null)}
+          onEnd={editing === 'new' ? undefined : () => endToday(editing)}
+          onRemove={editing === 'new' ? undefined : () => remove(editing)}
         />
-      ) : (
-        <button style={ui.primary} onClick={() => setEditing('new')}>
-          제품 추가
-        </button>
       )}
 
       {products.length === 0 && !editing && (
         <div style={ui.empty}>
           <p style={{ margin: 0 }}>아직 등록한 제품이 없어요.</p>
           <p style={{ fontSize: 13, margin: '4px 0 0' }}>쓰고 있는 것을 등록하면 사진과 함께 기간이 남아요.</p>
+          <button style={{ ...ui.primary, marginTop: 16 }} onClick={() => setEditing('new')}>
+            제품 추가
+          </button>
         </div>
       )}
 
       {active.length > 0 && (
         <Section title="사용 중" testId="section-active">
           {active.map((p) => (
-            <Row key={p.id} product={p} date={date} onEdit={setEditing} onEnd={endToday} onRemove={remove} />
+            <Card key={p.id} product={p} date={date} onEdit={setEditing} />
           ))}
         </Section>
       )}
@@ -98,7 +133,7 @@ export function Products({
       {ended.length > 0 && (
         <Section title="종료" testId="section-ended">
           {ended.map((p) => (
-            <Row key={p.id} product={p} date={date} onEdit={setEditing} onEnd={endToday} onRemove={remove} />
+            <Card key={p.id} product={p} date={date} onEdit={setEditing} />
           ))}
         </Section>
       )}
@@ -116,6 +151,41 @@ export function Products({
 
       {backup && <BackupToggle {...backup} />}
     </main>
+  );
+}
+
+/**
+ * 오늘 상태 줄(v4-1 §3-2). **사진은 절대 안 그린다** — 이 탭이 첫 화면이 된 이유가 「부르지
+ * 않았는데 얼굴이 보인다」였다. 찍었는지와 관찰 답만 말하고, 오른쪽은 행동이다.
+ *
+ * 알림 행·백업 행과 같은 가족(카드 + 가로 flex + 오른쪽 글자). **행 전체가 버튼**이고 두 상태
+ * 모두 촬영을 연다 — 「보기」로 오늘 탭에 보내는 안은 한 행에 행동이 둘이라 버렸다. 「다시 찍기」가
+ * 덮어쓰기임은 오늘 탭의 같은 문구가 이미 가르친다.
+ *
+ * DB가 열리기 전 한 프레임은 「안 찍었어요」로 뜰 수 있다 — 오늘 탭이 첫 화면이던 때와 같은
+ * 깜빡임이라 받아들인다.
+ */
+function TodayStrip({ shot, verdict, onShoot }: { shot: boolean; verdict: Verdict | undefined; onShoot: () => void }) {
+  return (
+    <button
+      aria-label={shot ? '오늘 얼굴 다시 찍기' : '오늘 얼굴 찍기'}
+      onClick={onShoot}
+      style={{ ...ui.card, display: 'flex', alignItems: 'center', gap: 12, width: '100%', textAlign: 'left', color: 'var(--blue)' }}
+    >
+      {/* 오늘 탭 아이콘과 같은 그림이라 「저 줄이 저 화면을 연다」가 눈으로 이어진다. */}
+      <Icon name="face" />
+      <span style={{ flex: 1 }}>
+        <span style={{ display: 'block', fontSize: 15, fontWeight: 600, color: 'var(--text)' }}>
+          {shot ? '오늘 찍었어요' : '오늘 아직 안 찍었어요'}
+        </span>
+        <span style={{ display: 'block', fontSize: 13, marginTop: 2, color: 'var(--text-sub)' }}>
+          {shot ? (verdict ? VERDICT_KO[verdict] : "'오늘' 탭에서 볼 수 있어요") : '지난 사진에 얼굴을 겹쳐 같은 구도로 찍어요'}
+        </span>
+      </span>
+      <span aria-hidden style={{ fontSize: 14, fontWeight: 600, color: 'var(--blue)' }}>
+        {shot ? '다시 찍기' : '찍기'}
+      </span>
+    </button>
   );
 }
 
@@ -213,51 +283,77 @@ function Section({ title, testId, children }: { title: string; testId: string; c
 /** `8월 1일` — 종료한 제품의 기간 표시용. 연도는 안 적는다(같은 줄이 길어지기만 한다). */
 const md = (d: string) => `${Number(d.slice(5, 7))}월 ${Number(d.slice(8))}일`;
 
-function Row({
-  product,
-  date,
-  onEdit,
-  onEnd,
-  onRemove,
-}: {
-  product: Product;
-  date: string;
-  onEdit: (p: Product) => void;
-  onEnd: (p: Product) => void;
-  onRemove: (p: Product) => void;
-}) {
+/**
+ * 제품 카드(v4-1 §3-3). **카드 전체가 버튼이고 안에 다른 버튼은 없다** — 메인 페이지에
+ * 카드마다 버튼 셋이 깔리면 목록이 아니라 조작판으로 읽힌다. 수정·종료·삭제는 폼 안에 산다.
+ *
+ * 왼쪽 숫자 블록이 카드의 얼굴이다. 사용 중이면 「n일째」(**시작 당일이 1일째** — 0일째는 말이
+ * 안 된다), 종료면 쓴 날수 「n일」이 회색으로 선다. 끝난 제품의 숫자는 **자라지 않는다.**
+ *
+ * ⚠️ 접근성 이름은 `${name} 수정` 한 마디다 — 본문을 이어 붙이면 스크린리더가 칩까지 버튼
+ * 이름으로 읽는다.
+ *
+ * ⚠️ 다만 `aria-label`은 이름을 **대체**한다 — 그대로 두면 스크린리더가 「토너 수정」 한 마디만
+ * 듣고 며칠째인지는 못 듣는다(리뷰 2026-09-02). `aria-describedby`로 숫자 블록과 본문을
+ * **설명**으로 잇는다 — 이름은 그대로라 `getByRole('button', { name })` 계측기가 안 흔들린다.
+ */
+function Card({ product, date, onEdit }: { product: Product; date: string; onEdit: (p: Product) => void }) {
   const using = isActive(product, date);
+  const ended = product.endDate;
+  const days = daysBetween(product.startDate, ended ?? date) + 1;
+  // 문서 안 다른 id와 부딪히지 않게 접두어를 단다. 순서가 곧 읽히는 순서다 — 「29 일째 토너 …」.
+  const bodyId = `product-${product.id}`;
+  const daysId = `${bodyId}-days`;
   return (
-    <div style={{ ...ui.card, padding: 12 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        <b style={{ fontSize: 15 }}>{product.name}</b>
-        <span style={ui.chip}>{CATEGORY_KO[product.category]}</span>
-        <span style={ui.spacer} />
-        <span style={{ fontSize: 12, color: 'var(--text-sub)', fontVariantNumeric: 'tabular-nums' }}>
-          {/* 끝난 제품에 D+n을 계속 붙이면 안 쓰는 제품의 숫자가 매일 자란다. */}
-          {product.endDate ? `${md(product.startDate)} ~ ${md(product.endDate)}` : `D+${daysBetween(product.startDate, date)}`}
+    <button
+      aria-label={`${product.name} 수정`}
+      aria-describedby={`${daysId} ${bodyId}`}
+      onClick={() => onEdit(product)}
+      style={{ ...ui.card, padding: 12, display: 'flex', alignItems: 'center', gap: 12, width: '100%', textAlign: 'left' }}
+    >
+      <span
+        id={daysId}
+        style={{
+          ...dayBlockStyle,
+          background: using ? 'var(--blue-soft)' : 'var(--bg-sub)',
+          borderColor: using ? 'var(--blue-soft)' : 'var(--line)',
+          // ⚠️ `--blue`는 `--blue-soft` 위에서 3.3:1이라 16px/700(= 보통 글자) AA 4.5:1에 못 미친다.
+          // `--blue-dark`가 4.8:1이다.
+          color: using ? 'var(--blue-dark)' : 'var(--text-sub)',
+        }}
+      >
+        <span style={{ fontSize: 16, fontWeight: 700, lineHeight: 1.1 }}>{days}</span>
+        <span style={{ fontSize: 10, lineHeight: 1.1 }}>{ended ? '일' : '일째'}</span>
+      </span>
+      <span id={bodyId} style={{ flex: 1, minWidth: 0 }}>
+        <b style={{ display: 'block', fontSize: 15, color: using ? 'var(--text)' : 'var(--text-sub)' }}>{product.name}</b>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginTop: 6 }}>
+          <span style={ui.chip}>{CATEGORY_KO[product.category]}</span>
+          {product.mfds && <MfdsMeta m={product.mfds} />}
+          {ended && <span style={{ fontSize: 12, color: 'var(--text-sub)' }}>{`${md(product.startDate)} ~ ${md(ended)}`}</span>}
         </span>
-      </div>
-      {product.mfds && <MfdsMeta m={product.mfds} />}
-      <div style={{ ...ui.row, marginTop: 8 }}>
-        <button style={{ ...ui.secondary, flex: 1, padding: '8px 10px' }} onClick={() => onEdit(product)}>
-          {`${product.name} 수정`}
-        </button>
-        {using && (
-          <button style={{ ...ui.secondary, flex: 1, padding: '8px 10px' }} onClick={() => onEnd(product)}>
-            {`${product.name} 종료`}
-          </button>
-        )}
-        <button
-          style={{ ...ui.secondary, flex: 1, padding: '8px 10px', color: 'var(--red)' }}
-          onClick={() => onRemove(product)}
-        >
-          {`${product.name} 삭제`}
-        </button>
-      </div>
-    </div>
+      </span>
+      <span style={{ color: 'var(--text-weak)', display: 'flex' }}>
+        <Icon name="chevron" size={18} />
+      </span>
+    </button>
   );
 }
+
+/** 숫자 블록. 테두리는 shorthand로 쓰지 않는다(`ui.ts` 머리말 — 리렌더에서 색이 풀린다). */
+const dayBlockStyle: React.CSSProperties = {
+  flexShrink: 0,
+  width: 44,
+  height: 44,
+  borderRadius: 10,
+  borderWidth: 1,
+  borderStyle: 'solid',
+  display: 'flex',
+  flexDirection: 'column',
+  alignItems: 'center',
+  justifyContent: 'center',
+  fontVariantNumeric: 'tabular-nums',
+};
 
 /**
  * 등록할 때 박제한 식약처 메타(설계 §4-2·§3-4).
@@ -273,7 +369,7 @@ function MfdsMeta({ m }: { m: MfdsSnapshot }) {
   // 「SPF50+ PA++++」. 한쪽만 있으면 그 한쪽만, 둘 다 없으면 칩 자체가 없다(빈 칩 방지).
   const uv = [m.spf && `SPF${m.spf}`, m.pa && `PA${m.pa}`].filter(Boolean).join(' ');
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
+    <>
       {m.entpName && <span style={{ fontSize: 12, color: 'var(--text-sub)' }}>{m.entpName}</span>}
       {m.effects.map((e) => (
         <span key={e} style={ui.chip}>
@@ -281,24 +377,29 @@ function MfdsMeta({ m }: { m: MfdsSnapshot }) {
         </span>
       ))}
       {uv && <span style={ui.chip}>{uv}</span>}
-    </div>
+    </>
   );
 }
 
 /**
- * 추가·수정 겸용 인라인 폼. 둘을 가르는 것은 **종료일 칸의 유무**뿐이다 —
- * 추가하면서 이미 끝난 제품을 넣는 일은 드물어서 그때는 칸을 안 연다.
+ * 추가·수정 겸용 인라인 폼. 둘을 가르는 것은 **종료일 칸과 종료·삭제 줄의 유무**다 —
+ * 추가하면서 이미 끝난 제품을 넣는 일은 드물고, 아직 없는 제품을 종료·삭제할 수도 없다.
  */
 function ProductForm({
   initial,
   today,
   onSubmit,
   onCancel,
+  onEnd,
+  onRemove,
 }: {
   initial: Product | null;
   today: string;
   onSubmit: (p: Product) => void;
   onCancel: () => void;
+  /** 수정일 때만. 카드에서 걷어낸 두 행동의 새 집이다(v4-1 §3-4). */
+  onEnd?: () => void;
+  onRemove?: () => void;
 }) {
   const [name, setName] = useState(initial?.name ?? '');
   const [category, setCategory] = useState<Category>(initial?.category ?? 'etc');
@@ -347,7 +448,7 @@ function ProductForm({
   const ok = name.trim().length > 0;
 
   return (
-    <div style={{ ...ui.card, display: 'grid', gap: 12 }}>
+    <div style={{ ...ui.card, display: 'grid', gap: 12, marginTop: 16 }}>
       <label style={{ display: 'block' }}>
         <span style={ui.label}>제품 이름</span>
         <input
@@ -441,6 +542,31 @@ function ProductForm({
           저장
         </button>
       </div>
+
+      {/*
+        종료·삭제의 집(v4-1 §3-4). 종료일 칸이 있는데도 버튼을 두는 이유: 네이티브 피커에서 오늘을
+        고르는 건 세 번 누르기, 이건 한 번이다. 추가 폼에는 없다 — 아직 없는 제품을 종료·삭제할 수 없다.
+        접근성 이름은 **원래 이름**(`initial.name`)으로 — 편집 중인 draft 이름으로 붙이면 글자를
+        칠 때마다 버튼 이름이 바뀐다.
+      */}
+      {initial && (
+        <div style={ui.row}>
+          {onEnd && isActive(initial, today) && (
+            <button aria-label={`${initial.name} 종료`} style={{ ...ui.secondary, flex: 1, padding: '10px 12px' }} onClick={onEnd}>
+              오늘까지 쓰고 종료
+            </button>
+          )}
+          {onRemove && (
+            <button
+              aria-label={`${initial.name} 삭제`}
+              style={{ ...ui.secondary, flex: 1, padding: '10px 12px', color: 'var(--red)' }}
+              onClick={onRemove}
+            >
+              삭제
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 }

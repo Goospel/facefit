@@ -2,7 +2,7 @@ import { useState } from 'react';
 
 import { isActive, sortProducts } from '../logic/products';
 import { isNotifySupported, requestNotifyAgreement, type NotifyResult } from '../notify';
-import type { Notes, Product } from '../storage';
+import { VERDICT_KO, type Notes, type Product } from '../storage';
 import { ui } from '../ui';
 import { LOCAL_ONLY, useObjectUrl, usePhotos } from './usePhotos';
 
@@ -12,8 +12,6 @@ import { LOCAL_ONLY, useObjectUrl, usePhotos } from './usePhotos';
  * **오늘 찍었는가**가 이 화면이 답하는 유일한 질문이다 — 나머지(관찰 답 · 사용 중 제품)는
  * 그 답에 딸린 맥락이다. 그래서 촬영 카드가 화면 맨 위 가장 큰 표면이다.
  */
-
-const VERDICT_KO: Record<string, string> = { better: '좋아졌어요', same: '그대로예요', worse: '나빠졌어요' };
 
 /**
  * 알림 행이 할 말. **누른 결과를 글자로 되돌려주는 자리다.**

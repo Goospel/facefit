@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { App } from './App';
@@ -60,13 +60,23 @@ describe('온보딩이 가장 앞이다', () => {
     expect(screen.queryByRole('button', { name: '기록' })).toBeNull();
   });
 
-  it('시작하면 오늘 탭으로 들어간다', () => {
+  it('시작하면 제품 탭으로 들어간다 — 얼굴은 부르기 전엔 안 보인다', () => {
     render(<App />);
 
     fireEvent.click(screen.getByRole('button', { name: '시작하기' }));
 
     expect(screen.queryByRole('button', { name: '시작하기' })).toBeNull();
-    expect(tab('기록')).toBeTruthy();
+    expect(tab('제품').getAttribute('aria-current')).toBe('page');
+    expect(screen.getByRole('heading', { name: '제품' })).toBeTruthy();
+    expect(screen.queryByRole('heading', { name: '오늘' })).toBeNull();
+  });
+
+  it('탭 순서는 제품 · 오늘 · 기록이다 — 첫 자리가 첫 화면이다', () => {
+    render(<App />);
+    fireEvent.click(screen.getByRole('button', { name: '시작하기' }));
+
+    const nav = screen.getByRole('navigation');
+    expect(within(nav).getAllByRole('button').map((b) => b.textContent)).toEqual(['제품', '오늘', '기록']);
   });
 
   it('다시 열면 안 뜬다 — 저장소까지 갔다는 뜻이다', () => {
@@ -86,10 +96,10 @@ describe('탭 이동', () => {
     fireEvent.click(screen.getByRole('button', { name: '시작하기' }));
   }
 
-  it('제품 탭으로 간다', () => {
+  it('오늘 탭으로 간다', () => {
     start();
-    fireEvent.click(tab('제품'));
-    expect(screen.getByRole('button', { name: '제품 추가' })).toBeTruthy();
+    fireEvent.click(tab('오늘'));
+    expect(screen.getByRole('heading', { name: '오늘' })).toBeTruthy();
   });
 
   it('기록 탭으로 간다', () => {
@@ -133,7 +143,7 @@ describe('전체화면', () => {
     fireEvent.click(screen.getByRole('button', { name: '닫기' }));
 
     expect(screen.getByRole('button', { name: '오늘 얼굴 찍기' })).toBeTruthy();
-    expect(tab('기록')).toBeTruthy();
+    expect(tab('제품').getAttribute('aria-current')).toBe('page');
   });
 
   it('기록 탭에서 타임랩스를 열고 닫으면 기록 탭으로 돌아온다', async () => {

@@ -20,6 +20,8 @@ import {
   saveOnboarded,
   saveProducts,
   todayKey,
+  VERDICT_KO,
+  VERDICTS,
   type Product,
 } from './storage';
 
@@ -503,5 +505,12 @@ describe('마지막 백업 시각 — loadLastBackupAt / saveLastBackupAt', () =
   it('저장소가 막혀 있어도 던지지 않는다', () => {
     expect(loadLastBackupAt(fakeStorage({ throwOnGet: true }))).toBeNull();
     expect(() => saveLastBackupAt('2026-09-01T00:00:00.000Z', fakeStorage({ throwOnSet: true }))).not.toThrow();
+  });
+});
+
+describe('VERDICT_KO — 관찰 문구 한 벌', () => {
+  it('어휘 셋에 문구가 하나씩 있다 — 화면들이 이 한 벌을 나눠 쓴다', () => {
+    // 촬영 화면의 버튼 라벨과 같은 말이라야 「내가 뭘 눌렀지」가 성립한다. 사본이 둘이면 어긋난다.
+    expect(VERDICTS.map((v) => VERDICT_KO[v])).toEqual(['좋아졌어요', '그대로예요', '나빠졌어요']);
   });
 });

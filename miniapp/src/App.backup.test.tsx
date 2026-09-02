@@ -228,6 +228,8 @@ describe('백업 스위치 — 제품 탭 상시', () => {
 
   it('오늘 탭에는 없다 — 「오늘 찍었나」에 답하는 화면에 설정이 섞이지 않는다', () => {
     render(<App />);
+    // 시작 탭이 제품이라(v4-1 §3-1) 오늘 탭은 눌러서 들어간다 — 재는 것은 그 탭의 내용이다.
+    fireEvent.click(screen.getByRole('button', { name: '오늘' }));
 
     expect(screen.queryByRole('switch')).toBeNull();
   });

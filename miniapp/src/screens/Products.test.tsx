@@ -3,7 +3,8 @@ import { act, cleanup, fireEvent, render, screen, within } from '@testing-librar
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { Suggestion } from '../logic/mfds';
-import type { MfdsSnapshot, Product } from '../storage';
+import { listPhotos, openPhotoDb, type FacePhoto as Photo } from '../photoStore';
+import type { MfdsSnapshot, Notes, Product } from '../storage';
 import { Products } from './Products';
 
 /**
@@ -14,6 +15,18 @@ const { searchProducts } = vi.hoisted(() => ({ searchProducts: vi.fn() }));
 // ⚠️ **네트워크만 목이다.** 같은 모듈의 `keepsSnapshot`은 진짜를 쓴다 — 규제 민감한 표시축의
 // 판정을 목으로 갈아 끼우면 화면 테스트가 그 규칙을 아예 안 재게 된다.
 vi.mock('../logic/mfds', async (orig) => ({ ...(await orig<typeof import('../logic/mfds')>()), searchProducts }));
+
+/**
+ * 사진 저장소도 목이다 — 이 화면은 「오늘 찍었나」만 묻고 사진 자체는 **그리지 않는다.**
+ * `openPhotoDb`·`listPhotos`를 setup에서 매번 세운다(`restoreAllMocks`가 구현을 지워도 안전하게).
+ */
+vi.mock('../photoStore', async (orig) => ({
+  ...(await orig<typeof import('../photoStore')>()),
+  openPhotoDb: vi.fn(),
+  listPhotos: vi.fn(),
+}));
+
+const photo = (date: string): Photo => ({ date, blob: new Blob([date]), capturedAt: 1, width: 960, height: 1280 });
 
 /**
  * 제품 탭 — 수동 CRUD.
@@ -36,15 +49,74 @@ const p = (over: Partial<Product> = {}): Product => ({
   ...over,
 });
 
-function setup(products: Product[] = []) {
+function setup(products: Product[] = [], over: { photos?: string[]; notes?: Notes } = {}) {
+  vi.mocked(openPhotoDb).mockResolvedValue({ close: () => {} } as unknown as import('../photoStore').PhotoDb);
+  vi.mocked(listPhotos).mockResolvedValue((over.photos ?? []).map(photo));
   const onChange = vi.fn<(next: Product[]) => void>();
-  const view = render(<Products products={products} onChange={onChange} date={TODAY} />);
-  return { onChange, ...view };
+  const onShoot = vi.fn();
+  const view = render(
+    <Products products={products} onChange={onChange} date={TODAY} notes={over.notes ?? {}} onShoot={onShoot} />,
+  );
+  return { onChange, onShoot, ...view };
 }
 
 const btn = (name: string | RegExp) => screen.getByRole('button', { name }) as HTMLButtonElement;
 
 beforeEach(() => vi.restoreAllMocks());
+
+/** 비동기 DB 목이 끝까지 돌게 한 틱 기다린다 — 안 기다리면 「안 찍었어요」가 초기 렌더로 늘 통과한다. */
+const flush = () => act(() => new Promise<void>((r) => setTimeout(r, 0)));
+
+describe('오늘 상태 줄 — 사진은 그리지 않는다', () => {
+  it('아직 안 찍었으면 찍자고 하고, 누르면 촬영을 연다', async () => {
+    const { onShoot } = setup();
+    await flush();
+
+    expect(screen.getByText('오늘 아직 안 찍었어요')).toBeTruthy();
+    fireEvent.click(btn('오늘 얼굴 찍기'));
+    expect(onShoot).toHaveBeenCalledTimes(1);
+  });
+
+  it('찍었으면 관찰 답을 말하고, 오른쪽은 「다시 찍기」다', async () => {
+    const { onShoot } = setup([], { photos: [TODAY], notes: { [TODAY]: 'better' } });
+    // ⚠️ `findByText`로 재면 **DB가 열리기 전 첫 프레임**에서도 해소돼 「안 찍었어요」를 통과시킨다.
+    // 한 틱 흘린 뒤 `getByText`로 단정해야 `shot` 반전이 여기서 죽는다(리뷰 2026-09-02).
+    await flush();
+
+    expect(screen.getByText('오늘 찍었어요')).toBeTruthy();
+    expect(screen.getByText('좋아졌어요')).toBeTruthy();
+    fireEvent.click(btn('오늘 얼굴 다시 찍기'));
+    expect(onShoot).toHaveBeenCalledTimes(1);
+  });
+
+  it('찍었는데 답이 없으면 오늘 탭을 가리킨다 — 「미응답」을 적으면 건너뛴 것이 실패로 보인다', async () => {
+    setup([], { photos: [TODAY] });
+    await flush();
+    expect(screen.getByText("'오늘' 탭에서 볼 수 있어요")).toBeTruthy();
+  });
+
+  it('어제 사진은 오늘 사진이 아니다', async () => {
+    setup([], { photos: ['2026-08-28'] });
+    await flush();
+    expect(screen.getByText('오늘 아직 안 찍었어요')).toBeTruthy();
+  });
+
+  it('어느 상태에도 <img>가 없다 — 얼굴은 부르기 전엔 안 보인다', async () => {
+    const { container } = setup([], { photos: [TODAY], notes: { [TODAY]: 'same' } });
+    await flush();
+    // 「찍은 상태에 도달했다」를 먼저 못박는다 — 이게 없으면 사진이 안 실린 첫 프레임에서
+    // `<img>`가 없는 것을 재고 끝나, 정작 재려던 상태를 안 밟는다.
+    expect(screen.getByText('오늘 찍었어요')).toBeTruthy();
+    expect(container.querySelector('img')).toBeNull();
+  });
+
+  it('폼이 열려 있어도 상태 줄은 그대로 있다 — 사라졌다 나타나면 화면이 흔들린다', async () => {
+    setup([p()]);
+    await flush();
+    fireEvent.click(btn('제품 추가'));
+    expect(btn('오늘 얼굴 찍기')).toBeTruthy();
+  });
+});
 
 describe('제품 목록', () => {
   it('아무것도 없으면 등록을 권한다', () => {
@@ -73,10 +145,24 @@ describe('제품 목록', () => {
     expect(screen.getByText('선크림')).toBeTruthy();
   });
 
-  it('시작일부터 며칠째인지 보여준다', () => {
-    // 8/01 시작, 오늘 8/29 → 28일째.
+  it('시작일부터 며칠째인지 보여준다 — 시작 당일이 1일째다', () => {
+    // 8/01 시작, 오늘 8/29 → daysBetween 28 + 1 = 29일째.
     setup([p({ startDate: '2026-08-01' })]);
-    expect(screen.getByText('D+28')).toBeTruthy();
+    expect(screen.getByText('29')).toBeTruthy();
+    expect(screen.getByText('일째')).toBeTruthy();
+  });
+
+  it('오늘 시작한 제품은 1일째다 — 0일째는 말이 안 된다', () => {
+    setup([p({ startDate: TODAY })]);
+    expect(screen.getByText('1')).toBeTruthy();
+  });
+
+  it('종료한 제품은 쓴 날수를 보여주고, 그 수는 오늘과 무관하다', () => {
+    // 8/1 ~ 8/11 → 11일. 오늘까지 세면 끝난 제품이 계속 자란다.
+    setup([p({ startDate: '2026-08-01', endDate: '2026-08-11' })]);
+    expect(screen.getByText('11')).toBeTruthy();
+    expect(screen.getByText('일')).toBeTruthy();
+    expect(screen.queryByText('일째')).toBeNull();
   });
 
   it('종료한 제품은 쓴 기간을 보여준다 — 오늘까지 세면 끝난 제품이 계속 자란다', () => {
@@ -160,6 +246,37 @@ describe('카드의 식약처 메타', () => {
       expect(textAll.includes(claim), claim).toBe(false);
     }
   });
+
+  it('메타 줄 순서는 카테고리 → 업소명 → 기능성 → SPF/PA다', () => {
+    // 설계 §3-3. 카테고리가 제일 왼쪽에 서야 「무슨 종류인가」가 먼저 읽힌다.
+    setup([p({ category: 'sunscreen', mfds: meta() })]);
+    const text = within(screen.getByTestId('section-active')).getByText('선크림').parentElement?.textContent ?? '';
+    const order = ['선크림', '데이셀코스메틱(주)', '미백', 'SPF50+ PA++++'].map((s) => text.indexOf(s));
+    expect(order.every((i) => i >= 0)).toBe(true);
+    expect([...order].sort((a, b) => a - b)).toEqual(order);
+  });
+});
+
+describe('「제품 추가」 버튼은 늘 0개 또는 1개다', () => {
+  it('제품이 있으면 제목 줄의 글자 버튼 하나다', () => {
+    setup([p()]);
+    const all = screen.getAllByRole('button', { name: '제품 추가' });
+    expect(all).toHaveLength(1);
+    expect(all[0].textContent).toBe('추가');
+  });
+
+  it('비어 있으면 빈 상태 블록의 큰 버튼 하나다 — 첫 사용자가 놓칠 수 없어야 한다', () => {
+    setup();
+    const all = screen.getAllByRole('button', { name: '제품 추가' });
+    expect(all).toHaveLength(1);
+    expect(all[0].textContent).toBe('제품 추가');
+  });
+
+  it('폼이 열리면 없다 — 둘을 동시에 열 수 없다', () => {
+    setup([p()]);
+    fireEvent.click(btn('제품 추가'));
+    expect(screen.queryByRole('button', { name: '제품 추가' })).toBeNull();
+  });
 });
 
 describe('제품 추가', () => {
@@ -220,6 +337,30 @@ describe('제품 추가', () => {
   });
 });
 
+describe('카드 — 읽는 카드', () => {
+  it('카드 안의 버튼은 카드 자체 하나뿐이고, 누르면 수정 폼이 열린다', () => {
+    // 메인 페이지에 카드마다 버튼 셋이 깔리면 목록이 아니라 조작판으로 읽힌다(v4-1 §3-3).
+    setup([p()]);
+    expect(within(screen.getByTestId('section-active')).getAllByRole('button')).toHaveLength(1);
+
+    fireEvent.click(btn('토너 수정'));
+
+    expect(screen.getByLabelText('제품 이름')).toBeTruthy();
+  });
+
+  it('카드 이름은 「수정」 한 마디지만, 며칠째·이름·칩은 설명으로 읽힌다 — aria-label이 내용을 삼키지 않게', () => {
+    setup([p({ startDate: '2026-08-01' })]);
+    const card = btn('토너 수정');
+    const described = (card.getAttribute('aria-describedby') ?? '')
+      .split(' ')
+      .map((id) => document.getElementById(id)?.textContent ?? '')
+      .join(' ');
+    expect(described).toContain('29');
+    expect(described).toContain('일째');
+    expect(described).toContain('토너');
+  });
+});
+
 describe('제품 수정', () => {
   it('기존 값이 폼에 채워진다', () => {
     setup([p({ name: '토너', category: 'toner', startDate: '2026-08-01' })]);
@@ -276,19 +417,32 @@ describe('제품 수정', () => {
   });
 });
 
-describe('오늘까지 쓰고 종료', () => {
-  it('종료일을 오늘로 넣는다 — 오늘까지 쓴 것으로 센다', () => {
+describe('오늘까지 쓰고 종료 — 폼 안에 산다', () => {
+  it('종료일을 오늘로 넣고 폼을 닫는다 — 오늘까지 쓴 것으로 센다', () => {
     // 어제로 넣으면 오늘 찍은 사진에 그 제품이 안 붙는다. 경계 하루가 구간 바를 어긋나게 한다.
     const { onChange } = setup([p()]);
+    fireEvent.click(btn('토너 수정'));
 
     fireEvent.click(btn('토너 종료'));
 
     expect(onChange.mock.calls[0][0][0].endDate).toBe(TODAY);
+    expect(screen.queryByLabelText('제품 이름')).toBeNull();
   });
 
-  it('이미 종료한 제품에는 그 버튼이 없다', () => {
+  it('이미 종료한 제품의 폼에는 그 버튼이 없다 — 삭제는 있다', () => {
     setup([p({ endDate: '2026-08-10' })]);
+    fireEvent.click(btn('토너 수정'));
+
     expect(screen.queryByRole('button', { name: '토너 종료' })).toBeNull();
+    expect(btn('토너 삭제')).toBeTruthy();
+  });
+
+  it('추가 폼에는 종료·삭제가 없다 — 아직 없는 제품이다', () => {
+    setup([p()]);
+    fireEvent.click(btn('제품 추가'));
+
+    expect(screen.queryByRole('button', { name: /종료$/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /삭제$/ })).toBeNull();
   });
 });
 
@@ -569,6 +723,7 @@ describe('제품 삭제', () => {
   it('한 번 묻고 지운다 — 되돌릴 수 없다', () => {
     const ask = vi.spyOn(window, 'confirm').mockReturnValue(true);
     const { onChange } = setup([p({ id: 'a' }), p({ id: 'b', name: '세럼' })]);
+    fireEvent.click(btn('토너 수정'));
 
     fireEvent.click(btn('토너 삭제'));
 
@@ -579,6 +734,7 @@ describe('제품 삭제', () => {
   it('아니라고 하면 그대로 둔다', () => {
     vi.spyOn(window, 'confirm').mockReturnValue(false);
     const { onChange } = setup([p()]);
+    fireEvent.click(btn('토너 수정'));
 
     fireEvent.click(btn('토너 삭제'));
 
