@@ -4,7 +4,7 @@ import { probeCamera, stopStream, type CameraProbeResult, type MediaDevicesLike 
 import { captureJpeg, PREVIEW_TRANSFORM, type Captured } from '../logic/capture';
 import { isNotifySupported, requestNotifyAgreement } from '../notify';
 import { savePhoto } from '../photoStore';
-import { isNotifyPrompted, saveNotifyPrompted, todayKey, type Verdict } from '../storage';
+import { isNotifyPrompted, saveNotifyPrompted, todayKey, VERDICT_KO, VERDICTS, type Verdict } from '../storage';
 import { ui } from '../ui';
 import { LOCAL_ONLY, useObjectUrl, usePhotos } from './usePhotos';
 
@@ -57,12 +57,11 @@ const OPEN_TIMEOUT_MS = 10000;
  */
 export const FLASH_MS = 500;
 
-/** 관찰 1문항의 선택지. 라벨과 저장값을 한 자리에 둔다 — 갈라 두면 하나만 바뀐다. */
-const VERDICT_OPTIONS: { verdict: Verdict; label: string }[] = [
-  { verdict: 'better', label: '좋아졌어요' },
-  { verdict: 'same', label: '그대로예요' },
-  { verdict: 'worse', label: '나빠졌어요' },
-];
+/**
+ * 관찰 1문항의 선택지. 어휘·문구는 `storage.ts` 한 벌(`VERDICTS`·`VERDICT_KO`)에서 온다 —
+ * 순서까지 그대로다. 여기 사본을 두면 셋 중 하나만 바뀐다(v4-1 리뷰).
+ */
+const VERDICT_OPTIONS = VERDICTS.map((v) => ({ verdict: v, label: VERDICT_KO[v] }));
 
 export function FacePhoto({
   onClose,

@@ -384,6 +384,8 @@ function MfdsMeta({ m }: { m: MfdsSnapshot }) {
 /**
  * 추가·수정 겸용 인라인 폼. 둘을 가르는 것은 **종료일 칸과 종료·삭제 줄의 유무**다 —
  * 추가하면서 이미 끝난 제품을 넣는 일은 드물고, 아직 없는 제품을 종료·삭제할 수도 없다.
+ *
+ * 날짜는 오늘까지만 받는다(`min`/`max` + `ok`).
  */
 function ProductForm({
   initial,
@@ -445,7 +447,18 @@ function ProductForm({
     setSettledName(s.itemName);
   }
 
-  const ok = name.trim().length > 0;
+  /**
+   * 저장 가능 조건. 이름이 있고 **날짜가 오늘까지**여야 한다(v4-1 후속). 미래 시작일은 카드에
+   * 「-6일째」로, 미래 종료일은 아직 안 온 날수로 섰다 — 이 앱의 기록은 「오늘까지 쓴 것」이라
+   * 미래는 애초에 값이 아니다. 피커는 `min`/`max`가 막지만 데스크톱 타이핑은 여기까지 온다.
+   * 빈 시작일도 막는다 — 저장소가 다시 읽을 때 `DATE_RE`로 레코드째 버려서 제품이 조용히 사라진다.
+   */
+  const dateOk = (d: string) => /^\d{4}-\d{2}-\d{2}$/.test(d);
+  const ok =
+    name.trim().length > 0 &&
+    dateOk(startDate) &&
+    startDate <= today &&
+    (endDate === '' || (dateOk(endDate) && startDate <= endDate && endDate <= today));
 
   return (
     <div style={{ ...ui.card, display: 'grid', gap: 12, marginTop: 16 }}>
@@ -493,13 +506,26 @@ function ProductForm({
 
       <label style={{ display: 'block' }}>
         <span style={ui.label}>시작일</span>
-        <input type="date" style={{ ...ui.input, textAlign: 'left' }} value={startDate} onChange={(e) => setStartDate(e.target.value)} />
+        <input
+          type="date"
+          max={today}
+          style={{ ...ui.input, textAlign: 'left' }}
+          value={startDate}
+          onChange={(e) => setStartDate(e.target.value)}
+        />
       </label>
 
       {initial && (
         <label style={{ display: 'block' }}>
           <span style={ui.label}>종료일</span>
-          <input type="date" style={{ ...ui.input, textAlign: 'left' }} value={endDate} onChange={(e) => setEndDate(e.target.value)} />
+          <input
+            type="date"
+            min={startDate}
+            max={today}
+            style={{ ...ui.input, textAlign: 'left' }}
+            value={endDate}
+            onChange={(e) => setEndDate(e.target.value)}
+          />
         </label>
       )}
 
