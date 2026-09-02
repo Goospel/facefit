@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { App } from './App';
 import { deleteBackup, fetchBackup, getBackupKey, isBackupSupported, uploadBackup } from './logic/backup';
 import { listPhotos } from './photoStore';
-import { isBackupDirty, isBackupEnabled, isBackupPrompted, loadNotes, loadProducts } from './storage';
+import { isBackupDirty, isBackupEnabled, isBackupPrompted, loadNotes, loadProducts, loadUsage } from './storage';
 
 /**
  * 백업 배선(설계 §3-4·§4-3). App.test.tsx가 「무슨 화면인가」를 잰다면 여기는 **언제 부르는가**다.
@@ -214,6 +214,40 @@ describe('복원 진입 — 온보딩 하단', () => {
     // 온보딩을 다시 보여주면 방금 복원한 기록 위에 「시작하기」가 뜬다.
     expect(screen.getByRole('button', { name: '제품' })).toBeTruthy();
   });
+
+  it('사용 로그도 함께 복원한다 — 사진의 의미가 기기를 넘어 남는다', async () => {
+    vi.mocked(fetchBackup).mockResolvedValue({
+      schemaVersion: 1,
+      products: [{ id: 'p1', name: '복원된 팩', category: 'mask', startDate: '2026-08-01', frequency: 'occasional' }],
+      notes: {},
+      usage: { '2026-08-30': ['p1'], '2026-08-29': [] },
+      clientSavedAt: '2026-09-01T10:00:00.000Z',
+    });
+
+    render(<App />);
+    fireEvent.click(screen.getByRole('button', { name: RESTORE_LINK }));
+    fireEvent.click(await screen.findByRole('button', { name: '이 기록으로 복원하기' }));
+
+    // 「안 썼다」(`[]`)까지 그대로 와야 3상이 기기를 넘어 산다.
+    await vi.waitFor(() => expect(loadUsage(localStorage)).toEqual({ '2026-08-30': ['p1'], '2026-08-29': [] }));
+  });
+
+  it('usage 없는 옛 백업으로 복원하면 로컬 로그를 비운다 — 복원은 덮어쓰기다', async () => {
+    // 안 비우면 새 기기의 남은 로그가 복원한 기록에 섞여, 찍지도 않은 사진의 로그가 산다.
+    localStorage.setItem('facefit.usage', JSON.stringify({ '2026-08-01': ['old'] }));
+    vi.mocked(fetchBackup).mockResolvedValue({
+      schemaVersion: 1,
+      products: [],
+      notes: {},
+      clientSavedAt: '2026-09-01T10:00:00.000Z',
+    });
+
+    render(<App />);
+    fireEvent.click(screen.getByRole('button', { name: RESTORE_LINK }));
+    fireEvent.click(await screen.findByRole('button', { name: '이 기록으로 복원하기' }));
+
+    await vi.waitFor(() => expect(loadUsage(localStorage)).toEqual({}));
+  });
 });
 
 describe('백업 스위치 — 제품 탭 상시', () => {
@@ -281,6 +315,19 @@ describe('백업 스위치 — 제품 탭 상시', () => {
     expect(isBackupEnabled(localStorage)).toBe(true);
     expect(screen.getByRole('switch').getAttribute('aria-checked')).toBe('true');
     await vi.waitFor(() => expect(uploadBackup).toHaveBeenCalled());
+  });
+
+  it('올리는 블롭에 사용 로그가 들어 있다 — 서버 화이트리스트에 usage가 필요한 이유다', async () => {
+    // ⚠️ 촬영 화면을 App 안에서 굴려 로그를 만들면 카메라 목까지 끌려온다 — 저장소에 심고
+    // 스위치를 켜는 **즉시 업로드 경로**로 재는 편이 같은 것을 훨씬 싸게 잰다.
+    localStorage.setItem('facefit.usage', JSON.stringify({ '2026-08-29': ['p1'] }));
+
+    render(<App />);
+    goProducts();
+    fireEvent.click(screen.getByRole('switch'));
+
+    await vi.waitFor(() => expect(uploadBackup).toHaveBeenCalled());
+    expect(vi.mocked(uploadBackup).mock.calls.at(-1)![1].usage).toEqual({ '2026-08-29': ['p1'] });
   });
 
   it('끄면 서버 데이터도 지운다 — 「끄기」가 곧 삭제권 행사다', async () => {

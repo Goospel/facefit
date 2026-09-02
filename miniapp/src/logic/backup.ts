@@ -1,6 +1,6 @@
 import { User } from '@apps-in-toss/web-framework';
 
-import type { Notes, Product } from '../storage';
+import type { Notes, Product, Usage } from '../storage';
 
 /**
  * 백업 클라이언트(설계 §4-3). 서버는 두 가지만 한다 — 이건 그중 하나다.
@@ -32,6 +32,13 @@ export type BackupBlob = {
   schemaVersion: 1;
   products: Product[];
   notes: Notes;
+  /**
+   * 사용 로그(v4-2 §4-1). **선택 키다** — 이 기능 이전에 만들어진 백업엔 없다.
+   *
+   * ⚠️ 그래서 `schemaVersion`은 **1을 유지한다.** 2로 올리면 옛 빌드 클라의 모양 검사가
+   * 새 백업을 「없음」으로 읽어, 얻는 것 없이 복원 경로만 잃는다.
+   */
+  usage?: Usage;
   /** 클라가 만든 문자열. 복원 미리보기의 「언제 저장분」 재료다 — 서버는 해석하지 않는다. */
   clientSavedAt: string;
 };
@@ -56,9 +63,12 @@ export function formatBackupTime(iso: string | null): string | null {
   return `${Number(month)}월 ${Number(day)}일 ${time.slice(0, 5)}`;
 }
 
-/** 페이로드를 만드는 유일한 자리. 여기 키가 하나 늘면 서버가 400으로 막는다(최상위 화이트리스트). */
-export function buildBackupBlob(products: Product[], notes: Notes, clientSavedAt: string): BackupBlob {
-  return { schemaVersion: 1, products, notes, clientSavedAt };
+/**
+ * 페이로드를 만드는 유일한 자리. 여기 키가 하나 늘면 서버가 400으로 막는다(최상위 화이트리스트) —
+ * v4-2의 `usage`가 정확히 그 경우라, **서버를 먼저 배포한 뒤** 이 클라가 나간다(§4-1).
+ */
+export function buildBackupBlob(products: Product[], notes: Notes, usage: Usage, clientSavedAt: string): BackupBlob {
+  return { schemaVersion: 1, products, notes, usage, clientSavedAt };
 }
 
 /**
@@ -158,6 +168,9 @@ function isBackupBlob(v: unknown): v is BackupBlob {
     Array.isArray(o.products) &&
     typeof o.notes === 'object' &&
     o.notes !== null &&
-    !Array.isArray(o.notes)
+    !Array.isArray(o.notes) &&
+    // `usage`는 선택 키다 — **없으면 통과**(옛 백업). 있으면 날짜 키 객체인지만 본다.
+    // 필드별 방어는 `loadUsage`의 일이다(로더 한 벌 규율 — 두 벌이면 드리프트한다).
+    (o.usage === undefined || (typeof o.usage === 'object' && o.usage !== null && !Array.isArray(o.usage)))
   );
 }

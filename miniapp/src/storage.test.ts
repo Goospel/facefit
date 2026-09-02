@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  FREQUENCIES,
+  FREQUENCY_KO,
   isBackupDirty,
   isBackupEnabled,
   isBackupPrompted,
@@ -9,6 +11,7 @@ import {
   loadLastBackupAt,
   loadNotes,
   loadProducts,
+  loadUsage,
   newId,
   PRODUCT_MAX,
   saveBackupDirty,
@@ -19,6 +22,8 @@ import {
   saveNotifyPrompted,
   saveOnboarded,
   saveProducts,
+  saveUsage,
+  saveUsageAll,
   todayKey,
   VERDICT_KO,
   VERDICTS,
@@ -512,5 +517,126 @@ describe('VERDICT_KO — 관찰 문구 한 벌', () => {
   it('어휘 셋에 문구가 하나씩 있다 — 화면들이 이 한 벌을 나눠 쓴다', () => {
     // 촬영 화면의 버튼 라벨과 같은 말이라야 「내가 뭘 눌렀지」가 성립한다. 사본이 둘이면 어긋난다.
     expect(VERDICTS.map((v) => VERDICT_KO[v])).toEqual(['좋아졌어요', '그대로예요', '나빠졌어요']);
+  });
+});
+
+/**
+ * 사용 빈도(v4-2 §3-5). 이 필드가 하는 일은 하나다 — **촬영 때 물어볼 제품인가.**
+ * 구간 판정(`isActive`)은 이걸 안 본다.
+ */
+describe('사용 빈도 — FREQUENCIES / FREQUENCY_KO', () => {
+  it('어휘는 둘이고 문구가 하나씩 있다', () => {
+    expect([...FREQUENCIES]).toEqual(['daily', 'occasional']);
+    expect(FREQUENCIES.map((f) => FREQUENCY_KO[f])).toEqual(['매일', '가끔']);
+  });
+
+  it('저장한 빈도가 그대로 돌아온다', () => {
+    const s = fakeStorage();
+    saveProducts([product({ frequency: 'occasional' })], s);
+
+    expect(loadProducts(s)[0].frequency).toBe('occasional');
+  });
+
+  it('어휘 밖 값은 필드만 지우고 레코드는 산다 — 카테고리·mfds와 같은 표시용 방어 등급이다', () => {
+    const s = fakeStorage();
+    seed(s, 'facefit.products', [{ ...product(), frequency: 'weekly' }]);
+
+    const [p] = loadProducts(s);
+    expect(p.name).toBe('토너');
+    expect(p.frequency).toBeUndefined();
+  });
+
+  it('필드가 없는 옛 레코드는 그대로 산다 — 없으면 매일이다', () => {
+    const s = fakeStorage();
+    saveProducts([product()], s);
+
+    expect(loadProducts(s)[0].frequency).toBeUndefined();
+  });
+});
+
+/**
+ * 사용 로그(v4-2 §4-1). **로그는 사진의 속성이다** — 키가 사진 날짜고, 값은 그 사진 직전
+ * 루틴(어제~촬영 전)에 쓴 제품 id다.
+ *
+ * ⚠️ **3상이다**: 키 없음(안 물어봤다) · `[]`(물어봤고 안 썼다) · `[id…]`(썼다).
+ * 「안 썼다」가 「기록 없음」으로 뭉개지면 팩 안 한 날의 사진이 대조군 노릇을 못 한다.
+ */
+describe('사용 로그 — loadUsage / saveUsage / saveUsageAll', () => {
+  it('저장한 날의 id 배열을 돌려주고, 다음 상태도 함께 준다', () => {
+    const s = fakeStorage();
+    const next = saveUsage('2026-08-29', ['p1'], s);
+
+    expect(next).toEqual({ '2026-08-29': ['p1'] });
+    expect(loadUsage(s)).toEqual({ '2026-08-29': ['p1'] });
+  });
+
+  it('빈 배열을 저장하면 빈 배열로 돌아온다 — 「물어봤고 안 썼다」는 「기록 없음」과 다르다', () => {
+    // 3상의 핵심이다. `delete`로 접으면 안 쓴 날의 사진이 「안 물어본 날」과 구별되지 않는다.
+    const s = fakeStorage();
+    saveUsage('2026-08-29', [], s);
+
+    expect(loadUsage(s)).toEqual({ '2026-08-29': [] });
+    expect(Object.prototype.hasOwnProperty.call(loadUsage(s), '2026-08-29')).toBe(true);
+  });
+
+  it('같은 날 다시 저장하면 덮어쓴다 — 같은 날 다시 찍기가 곧 정정 경로다', () => {
+    const s = fakeStorage();
+    saveUsage('2026-08-29', ['p1', 'p2'], s);
+    saveUsage('2026-08-29', ['p2'], s);
+    saveUsage('2026-08-28', [], s);
+
+    expect(loadUsage(s)).toEqual({ '2026-08-29': ['p2'], '2026-08-28': [] });
+  });
+
+  it('아무것도 없으면 빈 객체다', () => {
+    expect(loadUsage(fakeStorage())).toEqual({});
+  });
+
+  it('깨진 JSON도 빈 객체다', () => {
+    const s = fakeStorage();
+    seed(s, 'facefit.usage', '{{{');
+    expect(loadUsage(s)).toEqual({});
+  });
+
+  it('객체가 아니면 빈 객체다 — 배열로 저장된 옛 형태도 여기서 걸린다', () => {
+    const s = fakeStorage();
+    seed(s, 'facefit.usage', ['p1']);
+    expect(loadUsage(s)).toEqual({});
+  });
+
+  it('날짜가 아닌 키는 버린다 — 나머지 날은 남는다', () => {
+    const s = fakeStorage();
+    seed(s, 'facefit.usage', { 어제: ['p1'], '2026-08-29': ['p2'] });
+
+    expect(loadUsage(s)).toEqual({ '2026-08-29': ['p2'] });
+  });
+
+  it('배열이 아닌 값은 그 키만 버린다', () => {
+    const s = fakeStorage();
+    seed(s, 'facefit.usage', { '2026-08-28': 'p1', '2026-08-29': ['p2'] });
+
+    expect(loadUsage(s)).toEqual({ '2026-08-29': ['p2'] });
+  });
+
+  it('문자열이 아닌 원소만 버린다 — 그 날의 나머지 id는 산다', () => {
+    const s = fakeStorage();
+    seed(s, 'facefit.usage', { '2026-08-29': ['p1', 42, null, 'p2'] });
+
+    expect(loadUsage(s)).toEqual({ '2026-08-29': ['p1', 'p2'] });
+  });
+
+  it('saveUsageAll은 통째로 덮어쓴다 — 복원 전용이다', () => {
+    const s = fakeStorage();
+    saveUsage('2026-08-01', ['p1'], s);
+
+    saveUsageAll({ '2026-08-29': ['p2'] }, s);
+
+    expect(loadUsage(s)).toEqual({ '2026-08-29': ['p2'] });
+  });
+
+  it('저장소가 막혀 있어도 던지지 않는다', () => {
+    expect(loadUsage(fakeStorage({ throwOnGet: true }))).toEqual({});
+    expect(() => saveUsage('2026-08-29', ['p1'], fakeStorage({ throwOnSet: true }))).not.toThrow();
+    expect(() => saveUsageAll({ '2026-08-29': ['p1'] }, fakeStorage({ throwOnSet: true }))).not.toThrow();
   });
 });

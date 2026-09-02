@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 
 import { barSegments, dateFrac, frameDelay } from '../logic/timelapse';
-import type { Product } from '../storage';
+import type { Product, Usage } from '../storage';
 import { ui } from '../ui';
 import { LOCAL_ONLY, useObjectUrls, usePhotos } from './usePhotos';
 
@@ -20,9 +20,12 @@ const LANE_H = 18;
 
 export function Timelapse({
   products,
+  usage,
   onClose,
 }: {
   products: Product[];
+  /** 사용 로그(v4-2 §4-6). 프레임 배지가 「이 사진 전에 쓴 것」을 여기서 읽는다. */
+  usage: Usage;
   onClose: () => void;
 }) {
   // ⚠️ `idb` 주입 구멍을 안 둔다 — 이 화면의 테스트는 `openPhotoDb`를 통째로 목으로
@@ -66,6 +69,18 @@ export function Timelapse({
   const first = photos[0].date;
   const lastDate = photos[last].date;
   const segments = barSegments(products, first, lastDate);
+
+  /**
+   * 이 사진 직전에 쓴 것(§4-6). **3상을 셋 다 다르게 적는다** — 썼다 / 「쓴 것 없음」 /
+   * 아무 말도 안 함. 안 쓴 날과 안 물어본 날이 같은 글자로 뜨면, 안 쓴 날의 사진이 대조군
+   * 노릇을 못 한다(그 대조가 이 기능의 존재 이유다 — §0).
+   *
+   * 지운 제품의 id는 이름을 못 찾아 빠진다 — 전부 빠지면 「쓴 것 없음」으로 읽히는데,
+   * 그 사진 전에 쓴 제품이 **이제 목록에 없다**는 뜻이라 받아들인다(§4-9).
+   */
+  const usedIds = usage[current.date];
+  const usedNames = usedIds?.map((id) => products.find((p) => p.id === id)?.name).filter(Boolean) ?? [];
+  const usedTag = usedIds === undefined ? '' : usedNames.length ? ` · ${usedNames.join(', ')}` : ' · 쓴 것 없음';
   const lanes = segments.length === 0 ? 0 : Math.max(...segments.map((s) => s.lane)) + 1;
 
   /**
@@ -99,7 +114,9 @@ export function Timelapse({
         {urls[Math.min(index, last)] && (
           <img src={urls[Math.min(index, last)]} alt={`${current.date} 얼굴 사진`} style={fillStyle} />
         )}
-        <span style={dateBadge}>{`${Number(current.date.slice(5, 7))}월 ${Number(current.date.slice(8))}일`}</span>
+        <span style={dateBadge}>
+          {`${Number(current.date.slice(5, 7))}월 ${Number(current.date.slice(8))}일${usedTag}`}
+        </span>
       </div>
 
       <div style={{ ...ui.row, alignItems: 'center', marginTop: 12 }}>

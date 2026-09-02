@@ -16,6 +16,7 @@
 
 const PRODUCTS_KEY = 'facefit.products';
 const NOTES_KEY = 'facefit.notes';
+const USAGE_KEY = 'facefit.usage';
 const ONBOARDED_KEY = 'facefit.onboarded';
 const NOTIFY_PROMPTED_KEY = 'facefit.notifyPrompted';
 const BACKUP_ENABLED_KEY = 'facefit.backupEnabled';
@@ -28,6 +29,18 @@ export const PRODUCT_MAX = 200;
 
 export const CATEGORIES = ['cleanser', 'toner', 'serum', 'cream', 'sunscreen', 'mask', 'etc'] as const;
 export type Category = (typeof CATEGORIES)[number];
+
+/**
+ * 사용 빈도(v4-2 §3-5). **이 필드가 하는 일은 하나뿐이다 — 촬영 때 물어볼 제품인가.**
+ *
+ * 「주 1~2회」 같은 선언 어휘를 안 두는 이유: 실사용 로그(`Usage`)가 있으면 선언은 필요 없고,
+ * 선언과 로그가 어긋나면 어느 쪽이 참인지 아무도 못 고른다. 구간 판정(`isActive`)은 이걸 안 본다.
+ */
+export const FREQUENCIES = ['daily', 'occasional'] as const;
+export type Frequency = (typeof FREQUENCIES)[number];
+
+/** 화면 문구. 어휘 곁에 **한 벌만** 둔다(`VERDICT_KO`와 같은 규율 — 사본이 둘이면 한쪽이 낡는다). */
+export const FREQUENCY_KO: Record<Frequency, string> = { daily: '매일', occasional: '가끔' };
 
 /**
  * 등록 시점에 식약처 보고품목 API에서 받아 **박제한** 메타(설계 §3-3).
@@ -68,6 +81,8 @@ export type Product = {
   endDate?: string;
   /** 없으면 수기 등록 제품이다 — **v1 데이터 전부가 이 상태다.** */
   mfds?: MfdsSnapshot;
+  /** 없으면 `daily`. **촬영 때 물어볼 제품인가만 가른다** — 구간 판정은 이걸 안 본다(§4-2). */
+  frequency?: Frequency;
 };
 
 /**
@@ -166,6 +181,8 @@ function reviveProduct(v: unknown): Product | null {
   const out = { ...raw, category };
   if (!endOk) delete out.endDate;
   if (out.mfds !== undefined && !isSnapshot(out.mfds)) delete out.mfds;
+  // 어휘 밖 빈도는 **필드만** 지운다 — 없으면 `daily`라 레코드를 죽일 이유가 없다(§4-2).
+  if (out.frequency !== undefined && !FREQUENCIES.includes(out.frequency)) delete out.frequency;
   return out;
 }
 
@@ -207,6 +224,45 @@ export function saveNote(date: string, verdict: Verdict, storage: Storage = loca
  */
 export function saveNotes(notes: Notes, storage: Storage = localStorage): void {
   write(NOTES_KEY, notes, storage);
+}
+
+/**
+ * 사진 날짜 → **그 사진 직전 루틴(어제~촬영 전)에 쓴 제품 id**(v4-2 §4-1).
+ *
+ * 사진·관찰과 **같은 키**라 셋의 대조가 문자열 비교 하나로 끝나고, 「팩은 밤에 하고 사진은
+ * 아침에 찍는다」는 시점 불일치가 정의로 해소된다(§3-2).
+ *
+ * ⚠️ **3상이다**: 키 없음 = 안 물어봤다 · `[]` = 물어봤고 안 썼다 · `[id…]` = 썼다.
+ * `[]`를 「없음」으로 접으면 팩을 **안 한 날의 사진**이 대조군 노릇을 못 한다 — 그 대조가
+ * 이 기능의 존재 이유라(§0), 빈 배열은 데이터가 아니라 **사실**이다.
+ *
+ * ⚠️ 제품 id의 존재 여부는 **검사하지 않는다.** 지운 제품의 id가 남는 것이 정상이고(§4-9),
+ * 화면의 조인(`products.find`)이 알아서 걸러낸다 — 여기서 지우면 정리 코드가 늘 뿐이다.
+ */
+export type Usage = Record<string, string[]>;
+
+export function loadUsage(storage: Storage = localStorage): Usage {
+  const v = read(USAGE_KEY, storage);
+  if (typeof v !== 'object' || v === null || Array.isArray(v)) return {};
+  const out: Usage = {};
+  for (const [date, ids] of Object.entries(v)) {
+    // 어긋난 키·값은 **그 날짜만** 버린다(`loadNotes`와 같은 등급). 원소는 더 잘게 — 이상한
+    // id 하나 때문에 그날 기록을 통째로 버리면 사진의 의미가 사라진다.
+    if (DATE_RE.test(date) && Array.isArray(ids)) out[date] = ids.filter(isText);
+  }
+  return out;
+}
+
+/** 하루 1개, 다시 찍으면 덮어쓴다(§4-9). 돌려주는 것이 화면이 쓸 다음 상태다 — `saveNote`와 동형. */
+export function saveUsage(date: string, ids: string[], storage: Storage = localStorage): Usage {
+  const next = { ...loadUsage(storage), [date]: ids };
+  write(USAGE_KEY, next, storage);
+  return next;
+}
+
+/** 로그 전체를 덮어쓴다. **복원 전용이다** — `saveNotes`와 같은 이유로 쓴 뒤 다시 읽어 올린다. */
+export function saveUsageAll(usage: Usage, storage: Storage = localStorage): void {
+  write(USAGE_KEY, usage, storage);
 }
 
 /**
