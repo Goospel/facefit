@@ -73,6 +73,9 @@ export const FLASH_MS = 500;
  */
 const VERDICT_OPTIONS = VERDICTS.map((v) => ({ verdict: v, label: VERDICT_KO[v] }));
 
+/** 사용 로그 질문의 id. 칩 묶음이 이걸로 그 질문을 자기 이름으로 삼는다(§4-4 접근성). */
+const USED_ASK_ID = 'used-ask';
+
 export function FacePhoto({
   products,
   usage,
@@ -376,9 +379,20 @@ export function FacePhoto({
         */}
         {askable.length > 0 && (
           <>
-            <h2 style={{ ...ui.h2, fontSize: 20, textAlign: 'center' }}>어제부터 지금까지 쓴 게 있나요?</h2>
+            <h2 id={USED_ASK_ID} style={{ ...ui.h2, fontSize: 20, textAlign: 'center' }}>
+              어제부터 지금까지 쓴 게 있나요?
+            </h2>
             <p style={{ ...ui.sub, textAlign: 'center' }}>쓴 것만 눌러 주세요</p>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'center', marginBottom: 20 }}>
+            {/*
+              ⚠️ 묶음에 **질문을 이름으로 단다**. 칩 하나의 접근성 이름은 제품 이름 한 마디뿐이라
+              (체크 상태는 `aria-checked`가 말한다), 묶지 않으면 스크린리더 사용자는 「팩」이
+              무엇을 묻는 체크박스인지 들을 방법이 없다 — 질문이 바로 위에 있다는 것은 **눈으로만** 참이다.
+            */}
+            <div
+              role="group"
+              aria-labelledby={USED_ASK_ID}
+              style={{ display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'center', marginBottom: 20 }}
+            >
               {askable.map((p) => {
                 const on = used.includes(p.id);
                 return (

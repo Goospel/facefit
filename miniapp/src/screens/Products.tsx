@@ -38,6 +38,12 @@ import { usePhotos } from './usePhotos';
 /** 폼이 열려 있는 상태. `null`이면 닫힘, `'new'`면 추가, 제품이면 그것을 수정 중. */
 type Editing = null | 'new' | Product;
 
+/**
+ * 사용 빈도 안내 줄의 id. 고정값이어도 되는 이유: **폼은 언제나 0개 또는 1개**다
+ * (`editing`이 값 하나라 추가·수정이 동시에 열리지 않는다) — 문서에 둘이 설 수 없다.
+ */
+const FREQ_HINT_ID = 'frequency-hint';
+
 export function Products({
   products,
   onChange,
@@ -552,6 +558,12 @@ function ProductForm({
         <label style={{ display: 'block' }}>
           <span style={ui.label}>사용 빈도</span>
           <select
+            /*
+              안내 줄을 라벨 밖으로 뺐으면 **설명으로 다시 이어야** 한다 — 안 이으면 그 줄은
+              스크린리더 사용자에게 아예 없는 것과 같다. 이름은 안 건드리고 뜻만 더하는 자리다.
+              ⚠️ 매일일 때는 안 붙인다 — 안 그리는 요소를 가리키면 깨진 참조만 남는다.
+            */
+            aria-describedby={frequency === 'occasional' ? FREQ_HINT_ID : undefined}
             style={{ ...ui.input, textAlign: 'left' }}
             value={frequency}
             onChange={(e) => setFrequency(e.target.value as Frequency)}
@@ -565,10 +577,13 @@ function ProductForm({
         </label>
         {/*
           ⚠️ 안내 줄은 `<label>` **밖**이다 — 안에 두면 라벨의 접근성 이름이 「사용 빈도촬영할
-          때 …」로 붙어, 스크린리더도 계측기도 그 칸을 이름으로 못 찾는다(리뷰 전 실측).
+          때 …」로 붙어, 스크린리더도 계측기도 그 칸을 이름으로 못 찾는다(T-015). 밖으로 뺀 대신
+          위 `aria-describedby`가 **설명**으로 잇는다 — 이름은 그대로 「사용 빈도」다.
         */}
         {frequency === 'occasional' && (
-          <p style={{ ...ui.sub, margin: '6px 0 0' }}>촬영할 때 이 제품을 썼는지 물어봐요</p>
+          <p id={FREQ_HINT_ID} style={{ ...ui.sub, margin: '6px 0 0' }}>
+            촬영할 때 이 제품을 썼는지 물어봐요
+          </p>
         )}
       </div>
 

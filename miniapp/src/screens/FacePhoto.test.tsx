@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 // ⚠️ 전역으로 켜지 않는다 — 순수 로직 테스트는 node 환경이 빠르고, `photoStore.test.ts`는
 //    jsdom의 Blob이 구조화 복제를 못 견뎌서(T-002) 반드시 node에서 돌아야 한다.
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { IDBFactory } from 'fake-indexeddb';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -951,6 +951,16 @@ describe('촬영 화면 — 사용 로그 칩', () => {
     await screen.findByText('오늘 피부, 어때 보였나요?');
 
     expect(screen.getByRole('checkbox', { name: '팩' }).getAttribute('aria-checked')).toBe('true');
+  });
+
+  it('칩 묶음이 그 질문에 이름으로 묶인다 — 칩만 듣고는 무엇을 묻는지 알 수 없다', async () => {
+    // 칩의 접근성 이름은 제품 이름 한 마디뿐이라(체크 상태는 aria-checked가 말한다),
+    // 묶음에 이름이 없으면 스크린리더 사용자는 「팩」이 무엇을 묻는 체크박스인지 못 듣는다.
+    await saveOk({ products: [p()] });
+    await screen.findByText('오늘 피부, 어때 보였나요?');
+
+    const group = screen.getByRole('group', { name: '어제부터 지금까지 쓴 게 있나요?' });
+    expect(within(group).getByRole('checkbox', { name: '팩' })).toBeTruthy();
   });
 
   it('켰다 끄면 빈 배열로 저장된다 — 잘못 누른 것을 그 자리에서 되돌린다', async () => {

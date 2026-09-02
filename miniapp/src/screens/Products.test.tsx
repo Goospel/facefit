@@ -227,6 +227,25 @@ describe('사용 빈도 — 폼과 카드', () => {
     expect((screen.getByLabelText('사용 빈도') as HTMLSelectElement).value).toBe('occasional');
   });
 
+  it('안내 줄은 셀렉트의 설명으로 이어진다 — 이름은 안 건드리고 뜻만 더한다(T-015)', () => {
+    // 안내를 <label> 안에 넣으면 이름이 오염된다(T-015). 밖으로 뺀 대신 describedby로 잇는다 —
+    // 안 이으면 스크린리더 사용자에게는 그 줄이 아예 없는 것과 같다.
+    setup([p({ name: '팩', frequency: 'occasional' })]);
+    fireEvent.click(btn('팩 수정'));
+
+    const select = screen.getByLabelText('사용 빈도');
+    const describedBy = select.getAttribute('aria-describedby');
+    expect(describedBy).toBeTruthy();
+    expect(document.getElementById(describedBy!)?.textContent).toBe(GUIDE);
+  });
+
+  it('매일이면 설명이 붙지 않는다 — 안 뜨는 줄을 가리키면 이름만 깨진 참조가 된다', () => {
+    setup();
+    fireEvent.click(btn('제품 추가'));
+
+    expect(screen.getByLabelText('사용 빈도').getAttribute('aria-describedby')).toBeNull();
+  });
+
   it('카드: 가끔 제품은 기록된 날 수를 「n회」로 센다 — 오늘 것만 세면 안 된다', () => {
     // ⚠️ 오늘(8/29)이 아닌 날이 섞여 있다 — `usage[date]` 하나만 보는 구현은 여기서 죽는다.
     setup([p({ name: '팩', frequency: 'occasional' })], {
