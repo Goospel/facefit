@@ -6,7 +6,7 @@
 > 이번 세션 실측: 콘솔 MCP 스키마 5종 · 앱인토스 개발자 문서(`api/push.md` · `api/user-key.md` · `api/auth.md` ·
 > `documentation/integration/server-api.md` · `documentation/common/growth/smart-message.md`) · SDK `index.d.ts` 재확인 ·
 > 콘솔 읽기 조회(동의문 1건 · 템플릿 목록 0건 · 토스로그인 설정 `null`) · `T-014`(번들↔앱정보 간극).
-> **상태: 사용자 승인 대기.** 코드 0 변경 — 이 문서만 산출한다.
+> **상태: 2026-09-03 사용자 승인.** 결정 셋(문서 말미 「사용자 결정」)이 본문에 반영돼 있다 — 야간 상한 없음 · 익명 키 거부 시 토스 로그인 · 오늘 탭 배치.
 
 ---
 
@@ -17,10 +17,10 @@
   **앱이 「썼어요」를 서버에 알리고 → 서버가 3시간 뒤 앱인토스 스마트 발송 API(`send-message`)를 호출**한다.
 - **토스 로그인은 필요 없다(실측).** 발송 API 헤더 `x-anon-key`가 「미니앱 SDK의 `User.getAnonymousKey` 함수로 발급받을 수
   있어요」(`api/push.md` 원문) — **이미 백업이 쓰는 그 키**다. 로그인 0 · 개인정보 수집 0 원칙이 그대로 산다.
-  ⚠️ 단 문서 두 장이 서로 어긋난다(§2-2) — **첫 태스크가 이 가정의 실측**이고, 깨지면 §3-1 ⓐ′(토스 로그인)이 비용에 들어온다.
+  ⚠️ 단 문서 두 장이 서로 어긋난다(§2-2) — **첫 태스크가 이 가정의 실측**이고, 깨지면 §3-1 ⓐ′(토스 로그인)으로 간다
+  (사용자 결정 2026-09-03 — 접지 않는다. BookTimer의 토스 로그인 구현이 선례).
 - **승인 게이트**: 체크 1회 = 알림 1회 예약. 알림이 온 뒤 앱에서 「썼어요 · 다음 알림」을 누르지 않으면 다음은 없다.
-  거기에 **야간 상한(예약 시각이 22:00~07:00 KST에 떨어지면 예약하지 않음)을 제안**한다 — 게이트만으로는 19:30 체크 →
-  22:30 발송을 못 막는다(§3-3).
+  **밤을 막는 장치는 이 게이트 하나다** — 야간 상한은 두지 않는다(사용자 결정 2026-09-03, §3-3).
 - **비용 규모**: 서버 새 표면 **엔드포인트 2개**(`PUT/DELETE /v1/reminder`) + 워커 1개 + 테이블 1개 + 자바 파일 ~6 ·
   클라 새 파일 3 + 수정 4 · 콘솔 절차 **5건**(CONDITION_BASED 동의문 · SERVER 템플릿 · 검수 요청 · **mTLS 인증서 발급(콘솔 웹·사람 몫)** ·
   상세 설명 한 줄) · AWS SSM 파라미터 3개. **콘솔 앱정보 수정 필요 — 있음**(§3-6, T-014 교훈대로 번들과 같은 시점에).
@@ -51,7 +51,7 @@
 | 본문 | `{ templateSetCode, context }` — `templateSetCode`「사전에 등록한 템플릿 코드 중 하나」 · `context`는 템플릿 변수(우리는 변수 0 → `{}`) |
 | 전제 | 「테스트 발송을 포함해 모든 메시지는 문구 검수를 통해 승인 받은 이후 발송 가능해요」 · 오류 `5004` 「승인되지 않은 메시지 템플릿」 |
 | 한도 | 사용자당 **분당 10회** · 앱당 분당 15,000회 · 서버 API 공통 3,000 QPM |
-| 야간 제한 | **기능성 메시지에 대한 명시 규정 없음**(GitBook 질의 답변: 「기능성 메시지 자체에 대한 21시 이후 제한: 문서에 없음」). 야간 21~08시 개념은 토스로그인 약관의 「야간 혜택 수신 동의(선택)」 — 광고성 축이다. **플랫폼이 밤을 막아 주지 않는다 → 우리가 막아야 한다**(§3-3) |
+| 야간 제한 | **기능성 메시지에 대한 명시 규정 없음**(GitBook 질의 답변: 「기능성 메시지 자체에 대한 21시 이후 제한: 문서에 없음」). 야간 21~08시 개념은 토스로그인 약관의 「야간 혜택 수신 동의(선택)」 — 광고성 축이다. **플랫폼이 밤을 막아 주지 않는다** → 막는 장치는 승인 게이트뿐이다(§3-3 — 야간 상한은 사용자 결정으로 두지 않는다) |
 | 방화벽 | outbound 대상 `apps-in-toss-api.toss.im` = `117.52.3.192` · `211.115.96.192` · `106.249.5.192`(443). EC2 보안그룹은 outbound 전체 허용이 기본이라 작업 0(§7-6에서 확인 항목으로만) |
 | 익명 키 검증 API | `POST /api-partner/v1/apps-in-toss/users/anon-key/verify`(헤더 `x-anon-key` · 앱당 분당 3,000회) — **발송 템플릿 승인 전에 「mTLS + 익명 키 수용」을 실측할 수 있는 스모크 경로**(§4 절차 4) |
 
@@ -97,7 +97,7 @@
 | 대안 | 3시간 뒤 개인별 | 승인 게이트 | 로그인 | 비용 | 판정 |
 |---|---|---|---|---|---|
 | **ⓐ 파트너 서버 발송** — 앱 → `PUT /v1/reminder` → 서버 워커 → `send-message`(`x-anon-key`) | ✅ | ✅ (예약은 오직 사용자 탭으로만 생긴다) | 불필요(실측 §2-1) | 서버 표면 2 + 워커 + mTLS 인증서 + 콘솔 3건 | ✅ **채택** |
-| ⓐ′ 위와 같되 토스 로그인 userKey | ✅ | ✅ | **필요** | ⓐ + 콘솔 토스로그인 약관 동의(`toss_login_update_terms`)·clientId + 클라 로그인 화면 + 서버 OAuth 코드 교환(`사용자 정보 받기` API) + userKey 저장 + **개인정보 문구 전면 개정**(수집 0 원칙 포기) — 대략 ⓐ의 2~3배, 검수 리스크 별도 | ❌ **ⓐ의 §2-2 가정이 깨질 때의 폴백으로만** |
+| ⓐ′ 위와 같되 토스 로그인 userKey | ✅ | ✅ | **필요** | ⓐ + 콘솔 토스로그인 약관 동의(`toss_login_update_terms`)·clientId + 클라 로그인 화면 + 서버 OAuth 코드 교환(`사용자 정보 받기` API) + userKey 저장 + **개인정보 문구 전면 개정**(수집 0 원칙 포기) — 대략 ⓐ의 2~3배, 검수 리스크 별도 | ⏸ **ⓐ의 §2-2 가정이 깨질 때의 폴백** — 사용자 결정(2026-09-03): 거부되면 접지 않고 이 길로 간다. BookTimer의 토스 로그인 구현(콘솔 약관·clientId·서버 코드 교환)을 선례로 옮긴다 |
 | ⓑ 앱 안 타이머(`setTimeout`) | ✕ 웹뷰가 닫히면 코드가 안 돈다 · SDK에 로컬 알림 없음(§2-4) | — | — | 0 | ❌ **성립 불가** |
 | ⓒ 콘솔 정기 발송 근사 — 고정 슬롯(예: 10·13·16·19시) 각각 SCHEDULED 동의문+REGULAR 템플릿 | ✕ **동의자 전원**에게 슬롯마다 간다 — 「내가 쓴 뒤 3시간」이 아니다 | ✕ 승인 없이 매일 반복 · 밤 방지는 슬롯 선택으로만 | 불필요 | 콘솔 8건, 코드 거의 0 | ❌ 사용자 요구의 두 핵심(개인 시각 · 게이트)을 모두 못 채운다 |
 
@@ -118,13 +118,12 @@
 - 저장 순서: 동의 확인(`requestAgreement`, 멱등) → `PUT` 성공 → `oilNextAt` 저장. **서버 실패면 저장하지 않는다** — 예약 안 됐는데 「예약됨」으로 그리면 거짓말이다(백업 `dirty` 규율과 같은 결).
 - 「썼어요」는 **매번 `requestAgreement`를 거친다**(`alreadyAgreed`면 시트 없이 즉시 통과) — 앱은 동의 사본을 안 둔다(v2-1 §3-5 그대로). 거절이면 예약하지 않는다.
 
-### 3-3. 야간 상한 — 서버가 예약을 거부 (제안 · 사용자 결정 ②) 
+### 3-3. 야간 상한 — 두지 않는다 (사용자 결정 2026-09-03) ✅
 
-게이트는 「알림이 온 **뒤**」를 막는다. 첫 예약이 밤에 떨어지는 것은 못 막는다 — 19:30에 쓰고 체크하면 22:30에 울린다.
-그래서 **`due_at`(KST)이 `[22:00, 07:00)`이면 서버가 `{ dueAt: null }`을 돌려주고 행을 만들지 않는다.** 클라는 「밤에는 알림을 보내지
-않아요 · 내일 다시 눌러 주세요」로 답하고 `oilNextAt`을 저장하지 않는다. 상한 시각은 프로퍼티 `facefit.reminder.quiet-from=22:00` ·
-`quiet-until=07:00`(노브). 기각 대안: 「밤이면 다음날 07:00으로 미룸」 — 다음날 아침 첫 알림이 「어제 쓴 것」에 딸려 오는 셈이라 게이트의
-뜻(승인 없이 다음 없음)과 어긋난다.
+설계 초안은 「`due_at`이 22:00~07:00 KST면 서버가 예약을 거부」를 제안했다(게이트는 알림이 온 **뒤**만 막아서, 19:30 체크 → 22:30
+발송은 못 막는다는 이유). 사용자는 **게이트만** 두기로 했다 — 밤에 울릴지는 사용자가 체크할 때 스스로 정한다. 서버에 야간 판정·
+프로퍼티·`{ dueAt: null }` 응답 갈래는 **없다**. `PUT`은 항상 `{ dueAt }`을 돌려준다. 되살리려면 서버 한 곳(§3-4 컨트롤러)에 판정을 얹고
+클라에 문구 한 줄을 더하면 된다(§6).
 
 ### 3-4. 서버 상태 모델 · 워커 · 삭제 ✅
 
@@ -153,7 +152,6 @@
 | 예약됨 | 「다음 알림 **15:20** · 그때 다시 쓸지 정해요」(blue-dark 600) | check + 「예약됨」 | ghost 「그만 받기」 |
 | 승인 대기(`nextAt ≤ now`) | 「알림을 보냈어요 · 다음도 받을까요」(blue-dark 600) | 알약 「썼어요 · 다음 알림」 | ghost 「오늘은 그만」 |
 | 세션 한정 — 서버 실패/미지원 | 「지금은 예약할 수 없어요 · 잠시 뒤 다시 눌러 주세요」(amber) | 알약 「썼어요」 | — |
-| 세션 한정 — 야간 거부 | 「밤에는 알림을 보내지 않아요 · 내일 다시 눌러 주세요」(text-sub) | 알약 「썼어요」 | — |
 | 세션 한정 — 동의 거절 | 「알림을 켜지 않았어요 · 눌러서 언제든 켤 수 있어요」(text-sub) | 알약 「썼어요」 | — |
 
 - 제목 「기름종이 알림」. 카드 맨 아래 12px 상시 줄: 「알림 시각만 서버에 잠시 저장되고 알림이 가면 지워져요」(개인정보 고지 — §3-6).
@@ -210,18 +208,18 @@
 |---|---|
 | `db/migration/V2__reminder.sql` (신설) | §3-4 테이블 + `idx_reminder_due` |
 | `common/KeyCipher.java` (신설) | `byte[] seal(String)` / `String open(byte[])` — AES/GCM/NoPadding · IV 12B 선두 · KEK는 `${facefit.reminder.kek}`(base64) |
-| `reminder/ReminderController.java` (신설) | `PUT /v1/reminder`(본문 없음) → 키 → 레이트리밋 → 야간 판정 → upsert → `{dueAt}` 또는 `{dueAt:null}` · `DELETE` 204 멱등 |
+| `reminder/ReminderController.java` (신설) | `PUT /v1/reminder`(본문 없음) → 키 → 레이트리밋 → upsert → `{dueAt}` · `DELETE` 204 멱등 |
 | `reminder/ReminderRepository.java` (신설) | `upsert(hash, enc, dueAt)`(DELETE+INSERT — 백업과 같은 관용구) · `findDue(now, limit)` · `claim(hash)`(`attempts+1`) · `delete(hash)` · `purge(before)` |
 | `reminder/TossMessenger.java` (신설) | `interface`가 아니라 클래스 하나 — `boolean send(String anonKey)`: mTLS `HttpClient`(`@Lazy` 생성 · PEM → `SSLContext`) · `POST send-message` · `resultType == SUCCESS`. 테스트는 `@MockitoBean`으로 대체 |
 | `reminder/ReminderWorker.java` (신설) | `@Scheduled(fixedDelay=60_000)` — §3-4 워커 + `purge` |
 | `FacefitApplication.java` | `@EnableScheduling` |
-| `application.properties` / `-test.properties` | `facefit.reminder.interval-minutes=180` · `quiet-from=22:00` · `quiet-until=07:00` · `template-set-code=`(절차 7 값) · `kek=${FACEFIT_REMINDER_KEK}` · `mtls.cert-pem=${FACEFIT_TOSS_MTLS_CERT_PEM}` · `mtls.key-pem=${FACEFIT_TOSS_MTLS_KEY_PEM}` · `ratelimit.reminder-put-per-key-per-minute=6`. 테스트 프로파일은 고정 KEK · 빈 PEM(워커는 `@MockitoBean` 메신저) |
+| `application.properties` / `-test.properties` | `facefit.reminder.interval-minutes=180` · `template-set-code=`(절차 7 값) · `kek=${FACEFIT_REMINDER_KEK}` · `mtls.cert-pem=${FACEFIT_TOSS_MTLS_CERT_PEM}` · `mtls.key-pem=${FACEFIT_TOSS_MTLS_KEY_PEM}` · `ratelimit.reminder-put-per-key-per-minute=6`. 테스트 프로파일은 고정 KEK · 빈 PEM(워커는 `@MockitoBean` 메신저) |
 | `deploy/deploy-on-ec2.sh` | SSM 이름 루프에 3개 추가 |
 
 **TDD 태스크 (Red 케이스 먼저)**
 
 - **S-1 마이그레이션 + KeyCipher** — Red: `MigrationTest`에 `reminder` 테이블·인덱스 존재 · `KeyCipherTest`: 왕복 동일 · 같은 평문 두 번 봉인이 다른 바이트(IV) · 변조 1바이트 → 예외 · 잘못된 KEK 길이 → 기동 실패.
-- **S-2 API** — Red(`ReminderApiTest`·`ReminderAuthTest`): PUT 200 `dueAt` = now+180분(±1분, 서버 시계 주입) · DB에 `key_hash`=sha256만, `key_enc`는 원 키와 **바이트가 다름** · PUT 두 번 → 1행·`attempts` 0 리셋 · DELETE 204 → 재DELETE 204 · 키 없음/짧음 401 · 키당 7번째 429 · **야간**: `interval`을 넘겨 due가 22:00~06:59 KST면 `dueAt:null`·행 없음(경계 21:59 ✔ · 22:00 ✕ · 06:59 ✕ · 07:00 ✔ — 시계 주입으로 고정) · `/health`는 상한 밖 유지.
+- **S-2 API** — Red(`ReminderApiTest`·`ReminderAuthTest`): PUT 200 `dueAt` = now+180분(±1분, 서버 시계 주입) · DB에 `key_hash`=sha256만, `key_enc`는 원 키와 **바이트가 다름** · PUT 두 번 → 1행·`attempts` 0 리셋 · DELETE 204 → 재DELETE 204 · 키 없음/짧음 401 · 키당 7번째 429 · 밤 시각(예: 23:00 KST)에 PUT해도 **그대로 예약**된다(야간 상한 없음 — §3-3 결정의 회귀 가드) · `/health`는 상한 밖 유지.
 - **S-3 워커** — Red(`ReminderWorkerTest` · 메신저 mock · `Clock` 주입): due 지난 행만 send · send 성공 → 행 삭제 · 실패 → 행 유지·`attempts` 1 · 3회 실패 → 더는 호출 안 함 · `due_at < now-1d` 행 purge · 메신저가 받는 인자는 **복호화된 원 키**(sealed가 아님).
 - **S-4 TossMessenger** — Red: 본문이 `{"templateSetCode":…,"context":{}}` · 헤더 `x-anon-key` 존재·`x-toss-user-key` 부재 · `resultType: FAIL` → false · 예외 → false(던지지 않음). HTTP는 `HttpClient`를 인터페이스 없이 쓰므로 로컬 `com.sun.net.httpserver` 스텁(JDK 내장)으로 검증. mTLS 자체는 운영 스모크(절차 4·7)로.
 - **S-5 배포·스모크** — deploy 스크립트 갱신 → 머지 → 자동 배포 → 라이브 `PUT`(내 키) → 3시간 뒤 실수신. 배포 순서: **서버 먼저**(v4-2와 같은 이유 — 클라가 없는 엔드포인트를 부르면 무음 실패).
@@ -240,9 +238,9 @@
 
 **TDD 태스크**
 
-- **C-1 storage + reminder 순수 로직** — Red: `oilState`: null → idle · 미래 → scheduled · 과거(오늘) → awaiting · **어제 날짜 → idle** · 손상 문자열 → idle · `formatHm('2026-09-03T06:20:00Z')` → `'15:20'` · `scheduleOilReminder`: 200 `{dueAt}` 반환 · 200 `{dueAt:null}` 그대로 반환 · 네트워크 예외 → null · 5xx → null · 헤더 `X-Anon-Key` · `cancel`: 204 → true · 실패 → false.
+- **C-1 storage + reminder 순수 로직** — Red: `oilState`: null → idle · 미래 → scheduled · 과거(오늘) → awaiting · **어제 날짜 → idle** · 손상 문자열 → idle · `formatHm('2026-09-03T06:20:00Z')` → `'15:20'` · `scheduleOilReminder`: 200 `{dueAt}` 반환 · 네트워크 예외 → null · 5xx → null · 헤더 `X-Anon-Key` · `cancel`: 204 → true · 실패 → false.
 - **C-2 notify 인자화** — Red: 두 번째 인자로 준 코드가 `options.templateCode`에 실림 · 생략 시 기존 상수(기존 12케이스 무변경 통과).
-- **C-3 OilReminder 카드** — Red(SDK·fetch mock · `vi.useFakeTimers`로 now 고정): 미지원(둘 중 하나 false)이면 DOM에 없음 · idle 문구·알약 「썼어요」 · 탭 → `requestAgreement` 호출 → `alreadyAgreed` → PUT → `oilNextAt` 저장 → 「다음 알림 15:20」+check · `agreementRejected` → PUT **호출 안 함** · PUT 실패 → 저장 안 함 + amber 문구 · `{dueAt:null}` → 저장 안 함 + 야간 문구 · scheduled에서 「그만 받기」 → DELETE + 저장소 비움 + idle · awaiting(과거 nextAt)에서 「썼어요 · 다음 알림」 → 재예약 · **채운 파란 버튼(`background: var(--blue)`) 0개** · 고지 줄 상시.
+- **C-3 OilReminder 카드** — Red(SDK·fetch mock · `vi.useFakeTimers`로 now 고정): 미지원(둘 중 하나 false)이면 DOM에 없음 · idle 문구·알약 「썼어요」 · 탭 → `requestAgreement` 호출 → `alreadyAgreed` → PUT → `oilNextAt` 저장 → 「다음 알림 15:20」+check · `agreementRejected` → PUT **호출 안 함** · PUT 실패 → 저장 안 함 + amber 문구 · scheduled에서 「그만 받기」 → DELETE + 저장소 비움 + idle · awaiting(과거 nextAt)에서 「썼어요 · 다음 알림」 → 재예약 · **채운 파란 버튼(`background: var(--blue)`) 0개** · 고지 줄 상시.
 - **C-4 랜딩** — Red: `tabFromInitialUrl('intoss://facefit?tab=home')` → home · `'intoss://facefit'` → null · `'intoss://facefit?tab=xyz'` → null · `readInitialTab`이 SDK 예외에 null · `App`이 `tab=home`이면 오늘 탭 렌더(`aria-current`).
 - **C-5 릴리스** — `npm test` · `npm run build` → 번들 → 테스트 푸시 → 실기기: 체크 → 3시간 뒤 실수신 → 푸시 탭 → **오늘 탭으로 열림** → 「다음 알림」 → 재수신(게이트 1회전) → 「오늘은 그만」 → 더는 안 옴. 상세 설명 한 줄(§3-6) 같은 턴 → 검수 제출 → plan/changeLog sweep.
 
@@ -259,6 +257,7 @@
 |---|---|
 | 간격 사용자 설정 | 서버 상수 1개로 시작(노브). 수요 실측 뒤 — `PUT` 본문에 `intervalMinutes` 하나 얹으면 되는 크기라 지금 안 만든다 |
 | 자동 반복 | 사용자 원문이 게이트를 기본값으로 지정 — 반복은 요구 밖 |
+| 야간 상한(22:00~07:00 예약 거부) | 사용자 결정(2026-09-03) — 게이트만 둔다. 밤 알림 민원이 실측되면 서버 컨트롤러 한 곳 + 클라 문구 한 줄로 되살린다(§3-3) |
 | 사용 로그 백업·통계 | 「몇 번 썼나」는 요구에 없다. 기록이 필요해지면 `usage`와 같은 자리(사진 속성)로 재설계 |
 | 알림 뒤 앱 안 배너 | `initialURL` 랜딩 + 카드 승인 대기 상태로 충분 |
 | 인증서 만료 자동 알림 | 만료일을 plan에 적고 사람이 본다. 만료 시 증상은 워커 실패 로그 — 1회 겪으면 CloudWatch 알람 검토 |
@@ -275,12 +274,12 @@
 5. **SERVER 템플릿 생성 필드** — `sendOption.sendingTs`가 스키마상 required인데 SERVER에선 뜻이 없다. 거부 메시지로 맞춘다(v2-1 §7-2와 같은 급). 검수는 AI 자동이 아닐 수 있어 **승인 소요 미지**.
 6. **EC2 outbound** — 기본 전체 허용이지만 보안그룹을 손본 이력이 있으면 `443 → 117.52.3.192` 등 3개 IP 확인.
 7. **콘솔 상세 설명 500자** — 47자 추가분만큼 다른 문장을 줄여야 한다. 검수 지연 재발을 막는 유일한 수단이 이 정합이라 **생략 불가**.
-8. **시계** — 야간 판정·`dueAt`은 서버 시계(UTC JVM + `Asia/Seoul` 명시). 클라 표시는 `dueAt` 문자열을 KST로 포맷할 뿐 자기 시계로 계산하지 않는다. 승인 대기 판정(`nextAt ≤ now`)만 기기 시계 — 몇 분 어긋나도 해가 없다.
+8. **시계** — `dueAt`은 서버 시계(UTC JVM). 클라 표시는 `dueAt` 문자열을 KST로 포맷할 뿐 자기 시계로 계산하지 않는다. 승인 대기 판정(`nextAt ≤ now`)만 기기 시계 — 몇 분 어긋나도 해가 없다.
 
 ---
 
-## 사용자 결정이 필요한 항목
+## 사용자 결정 (2026-09-03 — 본문에 반영됨)
 
-1. **가정 실측 뒤 진행 방식** — 절차 4에서 익명 키가 거부되면 ⓐ′(토스 로그인 도입 · 수집 0 원칙 포기)로 갈지, 기능을 접을지. 지금 미리 정해 두면 그 자리에서 멈추지 않는다.
-2. **야간 상한 채택 여부와 시각** — 제안은 `22:00~07:00` 예약 거부(§3-3). 게이트만으로 충분하다고 보면 프로퍼티만 비우면 된다.
-3. **배치** — 오늘 탭 알림 행 아래(제안). 제품 탭이 첫 화면이라 「눈에 띄는 자리」를 원하면 제품 탭 하단(백업 스위치 옆)이 대안이지만, 그 탭의 파란 버튼 규칙·첫 진입 카드와 겹친다.
+1. **가정 실측 뒤 진행 방식** — 절차 4에서 익명 키가 거부되면 **ⓐ′ 토스 로그인을 도입한다**(접지 않는다). BookTimer의 토스 로그인 구현을 선례로 참고.
+2. **야간 상한 — 두지 않는다.** 밤을 막는 장치는 「다음 알림 승인」 게이트 하나(§3-3 · §6).
+3. **배치 — 오늘 탭 알림 행 아래.** 실기기로 보고 고친다.

@@ -319,6 +319,20 @@ app 388MB · mysql 240MB로 한참 낮다. facefit(149MB)까지 얹고 blue/gree
 - [ ] ⏸ **오늘 탭 축소**(오늘 사진 + 알림만 남기기) — 2차 뒤 두 탭이 같은 파란 버튼을 갖지만 원칙은
   「한 화면에 하나」라 충돌이 아니다. 실기기로 써 본 뒤 겹친다고 느껴지면 그때 연다(설계 §5)
 
+## v5 — 얼굴 기름종이 알림 (🔜 진행 중)
+
+설계: [`docs/2026-09-03-oil-paper-reminder-design.md`](docs/2026-09-03-oil-paper-reminder-design.md)(2026-09-03 사용자 승인 —
+야간 상한 없음 · 익명 키 거부 시 토스 로그인 · 오늘 탭 배치). 체크 1회 = 알림 1회. 서버가 3시간 뒤 스마트 발송 API를 직접 호출한다.
+
+- [ ] ⬜ **절차 1 · mTLS 인증서 발급**(사용자 · 콘솔 웹 「mTLS 인증서」 → 「+ 발급받기」) → PEM 2개. 만료일 기록: ____
+- [ ] ⬜ **절차 2 · SSM 파라미터 3개** — `FACEFIT_REMINDER_KEK`(Claude) · `FACEFIT_TOSS_MTLS_CERT_PEM` · `FACEFIT_TOSS_MTLS_KEY_PEM`(인증서 발급 뒤)
+- [ ] ⬜ **절차 3 · CONDITION_BASED 동의문** — `termsId`: ____
+- [ ] ⬜ **절차 4 · 익명 키 스모크**(`anon-key/verify`) — 거부되면 **토스 로그인(ⓐ′)** 로 간다(사용자 결정)
+- [ ] ⬜ **S-1~S-4 서버** — 마이그레이션·KeyCipher·API·워커·메신저(TDD) → PR
+- [ ] ⬜ **C-1~C-4 앱** — storage·reminder 로직·notify 인자화·OilReminder 카드·랜딩(TDD) → PR
+- [ ] ⬜ **절차 5~7 · SERVER 템플릿 → 검수 → 테스트 발송** — `templateSetCode`: ____
+- [ ] ⬜ **S-5 배포·스모크 → C-5 번들·실기기(게이트 1회전) → 상세 설명 한 줄(같은 턴) → 검수 제출**
+
 ## ⚠️ 리스크 · 미검증 가정
 
 - ~~플래시 500ms·6fps 체감~~ — v1 실기기 확정(상수 무조정). ~~`appName` 가용성~~ — facefit 확보. (v1 설계 §11 잔여 전부 해소)
