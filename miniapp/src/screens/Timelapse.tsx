@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 
+import { formatMd } from '../logic/calendar';
 import { barSegments, dateFrac, frameDelay } from '../logic/timelapse';
 import type { Product, Usage } from '../storage';
 import { ui } from '../ui';
@@ -115,7 +116,7 @@ export function Timelapse({
           <img src={urls[Math.min(index, last)]} alt={`${current.date} 얼굴 사진`} style={fillStyle} />
         )}
         <span style={dateBadge}>
-          {`${Number(current.date.slice(5, 7))}월 ${Number(current.date.slice(8))}일${usedTag}`}
+          {`${formatMd(current.date)}${usedTag}`}
         </span>
       </div>
 

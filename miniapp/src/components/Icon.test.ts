@@ -8,7 +8,7 @@ import { ICONS } from './Icon';
  */
 describe('아이콘', () => {
   it('탭 셋과 셰브론, 상태·촬영 아이콘이 모두 있다', () => {
-    expect(Object.keys(ICONS).sort()).toEqual(['bottle', 'calendar', 'check', 'chevron', 'face', 'layers', 'timer']);
+    expect(Object.keys(ICONS).sort()).toEqual(['bottle', 'calendar', 'check', 'chevron', 'face', 'layers', 'play', 'timer']);
   });
 
   it('이름만 있고 그림이 빈 아이콘이 없다', () => {

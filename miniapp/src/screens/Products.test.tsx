@@ -74,42 +74,61 @@ beforeEach(() => vi.restoreAllMocks());
 /** 비동기 DB 목이 끝까지 돌게 한 틱 기다린다 — 안 기다리면 「안 찍었어요」가 초기 렌더로 늘 통과한다. */
 const flush = () => act(() => new Promise<void>((r) => setTimeout(r, 0)));
 
-describe('오늘 상태 줄 — 사진은 그리지 않는다', () => {
-  it('아직 안 찍었으면 찍자고 하고, 누르면 촬영을 연다', async () => {
-    const { onShoot } = setup();
+/**
+ * 「파란 버튼은 하나」 계측기(UX 2차 설계 §6).
+ *
+ * 눈으로만 지키는 규칙은 다음 화면에서 조용히 깨진다 — `ui.primary` 톤(`background: var(--blue)`)인
+ * 버튼을 **세어** 세 상태에서 1·1·0을 단언한다. 헤더 「추가」는 `ui.ghost`(배경 없음)라 안 걸린다.
+ */
+const blueButtons = () => screen.getAllByRole('button').filter((b) => b.style.background === 'var(--blue)');
+
+/** 버튼의 접근성 이름 — `aria-label`이 있으면 그것, 없으면 보이는 글자. */
+const nameOf = (b: HTMLElement) => b.getAttribute('aria-label') ?? b.textContent;
+
+describe('찍기 CTA · 찍은 뒤 행 — 사진은 그리지 않는다', () => {
+  it('안 찍었으면 찍기 버튼 하나뿐이고, 누르면 촬영을 연다', async () => {
+    const { onShoot } = setup([p()]);
     await flush();
 
-    expect(screen.getByText('오늘 아직 안 찍었어요')).toBeTruthy();
     fireEvent.click(btn('오늘 얼굴 찍기'));
     expect(onShoot).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole('button', { name: '오늘 얼굴 다시 찍기' })).toBeNull();
   });
 
-  it('찍었으면 관찰 답을 말하고, 오른쪽은 「다시 찍기」다', async () => {
-    const { onShoot } = setup([], { photos: [TODAY], notes: { [TODAY]: 'better' } });
+  it('찍었으면 관찰 답을 말하고, 행동은 「다시 찍기」뿐이다', async () => {
+    const { onShoot } = setup([p()], { photos: [TODAY], notes: { [TODAY]: 'better' } });
     // ⚠️ `findByText`로 재면 **DB가 열리기 전 첫 프레임**에서도 해소돼 「안 찍었어요」를 통과시킨다.
     // 한 틱 흘린 뒤 `getByText`로 단정해야 `shot` 반전이 여기서 죽는다(리뷰 2026-09-02).
     await flush();
 
     expect(screen.getByText('오늘 찍었어요')).toBeTruthy();
     expect(screen.getByText('좋아졌어요')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: '오늘 얼굴 찍기' })).toBeNull();
     fireEvent.click(btn('오늘 얼굴 다시 찍기'));
     expect(onShoot).toHaveBeenCalledTimes(1);
   });
 
+  it('찍은 뒤 행 전체는 버튼이 아니다 — 상태 보고를 누르게 하면 「또 눌러야 하나」로 읽힌다', async () => {
+    setup([p()], { photos: [TODAY] });
+    await flush();
+
+    expect(screen.getByText('오늘 찍었어요').closest('button')).toBeNull();
+  });
+
   it('찍었는데 답이 없으면 오늘 탭을 가리킨다 — 「미응답」을 적으면 건너뛴 것이 실패로 보인다', async () => {
-    setup([], { photos: [TODAY] });
+    setup([p()], { photos: [TODAY] });
     await flush();
     expect(screen.getByText("'오늘' 탭에서 볼 수 있어요")).toBeTruthy();
   });
 
   it('어제 사진은 오늘 사진이 아니다', async () => {
-    setup([], { photos: ['2026-08-28'] });
+    setup([p()], { photos: ['2026-08-28'] });
     await flush();
-    expect(screen.getByText('오늘 아직 안 찍었어요')).toBeTruthy();
+    expect(btn('오늘 얼굴 찍기')).toBeTruthy();
   });
 
   it('어느 상태에도 <img>가 없다 — 얼굴은 부르기 전엔 안 보인다', async () => {
-    const { container } = setup([], { photos: [TODAY], notes: { [TODAY]: 'same' } });
+    const { container } = setup([p()], { photos: [TODAY], notes: { [TODAY]: 'same' } });
     await flush();
     // 「찍은 상태에 도달했다」를 먼저 못박는다 — 이게 없으면 사진이 안 실린 첫 프레임에서
     // `<img>`가 없는 것을 재고 끝나, 정작 재려던 상태를 안 밟는다.
@@ -117,18 +136,88 @@ describe('오늘 상태 줄 — 사진은 그리지 않는다', () => {
     expect(container.querySelector('img')).toBeNull();
   });
 
-  it('폼이 열려 있어도 상태 줄은 그대로 있다 — 사라졌다 나타나면 화면이 흔들린다', async () => {
+  it('폼이 열려 있어도 찍기 CTA는 그대로 있다 — 사라졌다 나타나면 화면이 흔들린다', async () => {
     setup([p()]);
     await flush();
     fireEvent.click(btn('제품 추가'));
     expect(btn('오늘 얼굴 찍기')).toBeTruthy();
   });
+
+  it('첫 진입 카드 안의 찍은 뒤 행은 카드가 아니다 — 카드 안 카드는 테두리가 겹쳐 보인다', async () => {
+    setup([], { photos: [TODAY] });
+    await flush();
+
+    const row = screen.getByText('오늘 찍었어요').closest('div') as HTMLElement;
+    expect(row.style.background).toBe('');
+    expect(row.style.border).toBe('');
+  });
+
+  it('목록 상태의 찍은 뒤 행은 그대로 카드다', async () => {
+    setup([p()], { photos: [TODAY] });
+    await flush();
+
+    const row = screen.getByText('오늘 찍었어요').closest('div') as HTMLElement;
+    expect(row.style.background).toBe('var(--bg-sub)');
+  });
+});
+
+describe('파란 버튼은 하나 — 지금 할 일을 따라간다', () => {
+  it('제품 0개: 파란 것은 「제품 추가」 하나 · 찍기는 회색 톤이다', async () => {
+    setup();
+    await flush();
+
+    expect(blueButtons().map(nameOf)).toEqual(['제품 추가']);
+    expect(btn('오늘 얼굴 찍기').style.background).toBe('var(--bg-sub)');
+  });
+
+  it('제품 ≥1 · 안 찍음: 파란 것은 「오늘 얼굴 찍기」 하나 · 「제품 추가」는 헤더 글자 버튼이다', async () => {
+    setup([p()]);
+    await flush();
+
+    expect(blueButtons().map(nameOf)).toEqual(['오늘 얼굴 찍기']);
+    expect(btn('제품 추가').style.background).toBe('none');
+  });
+
+  it('찍은 날: 파란 버튼이 0개다 — 오늘 할 일이 끝났으면 화면에 재촉이 없다', async () => {
+    setup([p()], { photos: [TODAY] });
+    await flush();
+
+    expect(blueButtons()).toEqual([]);
+  });
+
+  it('제품 0개인데 이미 찍었으면 카드 ② 자리가 「찍은 뒤 행」이다 — 화면이 거짓말을 안 한다', async () => {
+    setup([], { photos: [TODAY] });
+    await flush();
+
+    expect(screen.getByText('시작은 두 가지면 돼요')).toBeTruthy();
+    expect(screen.getByText('오늘 찍었어요')).toBeTruthy();
+    expect(blueButtons().map(nameOf)).toEqual(['제품 추가']);
+  });
+
+  it('번호 원도 「지금 할 것」을 말한다 — ①만 파랗고 ②는 회색이다', async () => {
+    setup();
+    await flush();
+
+    // 파란 버튼과 같은 신호를 원이 한 번 더 준다 — 버튼 색 하나에 기대면 흘끗 보는 사람이 놓친다.
+    expect(screen.getByText('1').style.background).toBe('var(--blue)');
+    expect(screen.getByText('2').style.background).toBe('var(--line)');
+  });
 });
 
 describe('제품 목록', () => {
-  it('아무것도 없으면 등록을 권한다', () => {
+  it('아무것도 없으면 할 일 둘을 번호로 말한다', () => {
     setup();
-    expect(screen.getByText(/아직 등록한 제품이 없어요/)).toBeTruthy();
+    expect(screen.getByText('시작은 두 가지면 돼요')).toBeTruthy();
+    // 첫 화면이 된 탭이라 기기 전용 고지가 여기에도 선다.
+    expect(screen.getByText(/사진은 이 기기에만 저장되며/)).toBeTruthy();
+  });
+
+  it('첫 등록 폼을 열어도 기기 전용 고지는 남는다 — 카드에 딸려 사라지면 고지가 없는 화면이 된다', () => {
+    setup();
+    fireEvent.click(btn('제품 추가'));
+
+    expect(screen.queryByText('시작은 두 가지면 돼요')).toBeNull();
+    expect(screen.getByText(/사진은 이 기기에만 저장되며/)).toBeTruthy();
   });
 
   it('사용 중과 종료를 섹션으로 가른다 — 지금 뭘 쓰는지가 이 탭에 오는 이유다', () => {
