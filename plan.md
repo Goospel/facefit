@@ -324,10 +324,15 @@ app 388MB · mysql 240MB로 한참 낮다. facefit(149MB)까지 얹고 blue/gree
 설계: [`docs/2026-09-03-oil-paper-reminder-design.md`](docs/2026-09-03-oil-paper-reminder-design.md)(2026-09-03 사용자 승인 —
 야간 상한 없음 · 익명 키 거부 시 토스 로그인 · 오늘 탭 배치). 체크 1회 = 알림 1회. 서버가 3시간 뒤 스마트 발송 API를 직접 호출한다.
 
-- [ ] ⬜ **절차 1 · mTLS 인증서 발급**(사용자 · 콘솔 웹 「mTLS 인증서」 → 「+ 발급받기」) → PEM 2개. 만료일 기록: ____
-- [ ] ⬜ **절차 2 · SSM 파라미터 3개** — `FACEFIT_REMINDER_KEK`(Claude) · `FACEFIT_TOSS_MTLS_CERT_PEM` · `FACEFIT_TOSS_MTLS_KEY_PEM`(인증서 발급 뒤)
-- [ ] ⬜ **절차 3 · CONDITION_BASED 동의문** — `termsId`: ____
-- [ ] ⬜ **절차 4 · 익명 키 스모크**(`anon-key/verify`) — 거부되면 **토스 로그인(ⓐ′)** 로 간다(사용자 결정)
+- [x] ✅ **절차 1 · mTLS 인증서 발급**(사용자 · 콘솔 웹, 이름 `facefit-server` · 2026-09-03) → 레포 루트 `mTLS/`(gitignore)에 zip + PEM 2개.
+  키는 **PKCS#8 그대로**(`BEGIN PRIVATE KEY` — openssl 변환 불필요). ⚠️ 만료일은 콘솔 웹에서 확인해 여기 적을 것: ____
+- [x] ✅ **절차 2 · SSM 파라미터 4개** — `FACEFIT_REMINDER_KEK`(32B · PowerShell RNG) · `FACEFIT_REMINDER_TEMPLATE_SET_CODE` · `FACEFIT_TOSS_MTLS_CERT_PEM` ·
+  `FACEFIT_TOSS_MTLS_KEY_PEM`(SecureString · 되읽어 로컬과 동일). ⚠️ Git Bash에서 `/facefit/…` 인자는 MSYS 경로 변환으로 「fully qualified name」
+  오류 + describe 필터는 **조용히 빈 목록**(글로벌 원칙 5 재발) — PowerShell로 우회
+- [x] ✅ **절차 3 · CONDITION_BASED 동의문** — `termsId` **119657**(제목 「기름종이를 쓰고 체크하면 다음 알림을 보내드릴까요?」)
+- [x] ✅ **절차 4 · 스모크** — `openssl s_client -cert/-key`로 `anon-key/verify` → TLS 통과 · 200 · 4010 「인증 정보를 찾을 수 없어요」.
+  인증서 없이는 TLS alert 116 「certificate required」 → **mTLS 유효 확정**. 4010은 헤더 유무·종류와 무관하게 같아 **익명 키 수용은
+  실기기 진짜 키의 3시간 뒤 실수신으로만 확정**(아래 C-5). ⚠️ Windows curl(Schannel)은 PEM·PFX 전부 거부 — mTLS 스모크는 `openssl s_client`로
 - [x] ✅ **S-1~S-4 서버** — 마이그레이션·KeyCipher·API·워커·메신저(TDD · 서버 테스트 89건) → PR
   - **다크런치**: KEK·템플릿 코드·mTLS PEM 중 하나라도 없으면 알림만 쉰다(PUT은 503 · 워커는 1회 경고 후 스킵).
     「PEM이 있는데 못 읽는」 경우(파일 삭제·권한·형식)도 같은 취급이다 — 번들을 실제로 만들어 보고 판정한다.
@@ -336,8 +341,21 @@ app 388MB · mysql 240MB로 한참 낮다. facefit(149MB)까지 얹고 blue/gree
   테스트 **630건**(기준선 572 + 신규 58). 리뷰 반영 1회 — 알약·표식을 `ui`로 한 벌 통합 · 연타 가드 ·
   자정 넘긴 예약 잠금. ⚠️ 서버가 라이브가 되기 전까지
   「썼어요」는 「지금은 예약할 수 없어요」로 끝난다(무음 폴백)
-- [ ] ⬜ **절차 5~7 · SERVER 템플릿 → 검수 → 테스트 발송** — `templateSetCode`: ____
-- [ ] ⬜ **S-5 배포·스모크 → C-5 번들·실기기(게이트 1회전) → 상세 설명 한 줄(같은 턴) → 검수 제출**
+- [x] ✅ **절차 5~6 · SERVER 템플릿** — `push_template_create` type=SERVER → **AI 자동검수 즉시 APPROVED**(4항목 pass · `push_send_scheduled` 불필요).
+  `templateSetGroupNo` **11588** · `templateSetCode` **`facefit-oil-paper-reminder`** · 문구 A안(「기름종이 시간 / 체크한 뒤 3시간이 지났어요.」 —
+  본문에 「(그화장품효과있나 알림)」 자동 부착) · `linkUri intoss://facefit?tab=home`. ⚠️ SERVER는 **그룹과 소재의 발송 코드가 같아야 한다**
+  (설계의 `-1` 접미 소재 코드는 거부 — v2-1 REGULAR와 다르다). 절차 7(`send-test-message`)은 생략 — 코드가 그룹=소재 하나라 모호함이 없다
+- [x] ✅ **S-5 배포·스모크**(2026-09-03 12:46 KST) — main `11ac4b1` 자동 배포 성공 → `PUT /v1/reminder` 200 `{dueAt: now+180분}` · 키 없음 401 ·
+  `DELETE` 204. EC2: `/opt/facefit/toss/client-*.pem` 600·uid 10001 · `.env`에 SSL 번들 2줄+알림 2줄 · Flyway V2 적용 · 다크런치 경고 없음.
+  워커 발송 경로 검증용 **가짜 키 예약 1건**을 남겨 뒀다(15:49 KST 발송 시도 → 토스 4010 거부 로그가 곧 mTLS 발송 경로의 증거)
+- [x] ✅ **C-5 번들·실기기(1차)** — 번들 `20260903-19`(main `fbf9152` · 265.88kB · sdk 3.1.1 · UX 1차·2차 포함 → `-18` 대체) 테스트 푸시 →
+  **실기기 확인(사용자 2026-09-03)**: 카드 노출 · 「썼어요」 → 동의 시트(제목 = 동의문 `sendCondition`) 뜸. **시트는 닫았다(동의 안 함)** —
+  그래서 서버에 진짜 키 행은 아직 없다(Caddy 접근 로그로 확인: 기기발 `/v1/reminder` 요청 0건 — 거절이면 서버를 안 부르는 설계대로).
+- [ ] ⬜ **C-5 (2차) · 실수신 확인** — 사용자가 「썼어요」 → **동의** → 「예약됨」까지 간 뒤 3시간: 워커가 진짜 키로 발송 → 푸시 도착(=익명 키
+  수용 최종 확정) → 탭 시 오늘 탭 랜딩 → 「다음 알림」 1회전. 서버 로그(`docker compose logs`)의 발송 결과가 1차 판정, 기기 수신이 최종.
+  DB 확인은 SSM Run Command로 `mysql -u$SPRING_DATASOURCE_USERNAME …`(`.env`에서 `set -a; . ./.env`) — root는 비밀번호가 없어 거부된다
+- [ ] ⬜ **상세 설명 한 줄(같은 턴) → 검수 제출** — 「기름종이 알림을 켜면 다음 알림 시각만 서버에 잠시 저장되고, 알림이 가면 지워져요.」(495/500자라
+  다른 문장 약 42자 축약 필요) → `miniapp_meta_status`로 접수 확인 → `-19` `bundle_submit_review`. ⚠️ `-16`(v4-2 계단 1)이 REVIEWING이면 그 뒤에
 
 ## ⚠️ 리스크 · 미검증 가정
 
