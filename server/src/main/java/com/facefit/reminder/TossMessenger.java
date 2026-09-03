@@ -49,6 +49,9 @@ class TossMessenger {
 	/** 지연 생성한 mTLS RestClient(인증서 없이도 기동해야 하므로 첫 호출 때 만든다). */
 	private volatile RestClient restClient;
 
+	/** 번들을 못 만든 이유는 한 번만 남긴다 — 분마다 같은 줄을 쌓으면 진짜 오류가 묻힌다. */
+	private volatile boolean warnedBundleUnusable;
+
 	@Autowired
 	TossMessenger(@Value("${facefit.toss.api-base-url}") String apiBaseUrl,
 			@Value("${facefit.reminder.template-set-code}") String templateSetCode,
@@ -70,21 +73,30 @@ class TossMessenger {
 	}
 
 	/**
-	 * 보낼 준비가 됐는가 — <b>승인된 템플릿 코드</b>와 <b>mTLS 인증서</b> 둘 다 있어야 한다.
-	 * 콘솔 절차(인증서 발급·템플릿 검수)가 끝나기 전에는 false이고, 워커는 조용히 쉰다.
+	 * 보낼 준비가 됐는가 — <b>승인된 템플릿 코드</b>와 <b>실제로 만들어지는 mTLS 클라이언트</b>.
+	 *
+	 * <p>번들이 <b>등록됐는지</b>가 아니라 <b>로드되는지</b>를 본다. SSL 번들은 이름만 먼저 잡히고
+	 * 실제 로딩은 미뤄지기 때문에, PEM이 지워졌거나·권한이 막혔거나·형식이 틀려도 「등록됨」은
+	 * 그대로 true다. 그걸 믿으면 워커가 매분 행을 집어 {@code attempts}를 태우고, 3회를 채운
+	 * 예약은 <b>영영 안 간다</b> — 사용자 화면엔 「예약됨」만 남는다. 그래서 여기서 한 번
+	 * 만들어 본다(성공하면 그 클라이언트가 그대로 재사용되므로 낭비도 아니다).
+	 *
+	 * <p>실패는 기억하지 않는다 — 인증서가 나중에 채워지면 다음 분에 저절로 살아난다.
 	 */
 	boolean isConfigured() {
 		if (templateSetCode == null || templateSetCode.isBlank()) {
 			return false;
 		}
-		if (sslBundles == null) {
-			return true; // 테스트 주입 경로 — 인증서 대신 목 서버가 붙어 있다.
-		}
 		try {
-			sslBundles.getBundle(sslBundleName);
+			restClient();
 			return true;
 		} catch (RuntimeException e) {
-			return false; // 번들 미등록 = 인증서 아직 없음(로컬·다크런치).
+			if (!warnedBundleUnusable) {
+				warnedBundleUnusable = true;
+				// 왜 못 쓰는지는 여기에만 남는다(파일 없음·권한·형식) — 워커의 경고는 「미설정」까지만 안다.
+				log.warn("토스 mTLS 클라이언트를 만들지 못했다 (bundle={}): {}", sslBundleName, e.toString());
+			}
+			return false;
 		}
 	}
 
@@ -118,12 +130,35 @@ class TossMessenger {
 			log.warn("기름종이 알림 발송 응답이 비어 있다 (template={})", templateSetCode);
 			return false;
 		}
-		JsonNode resultType = objectMapper.readTree(body).findValue("resultType");
-		if (resultType != null && "SUCCESS".equals(resultType.asString())) {
+		JsonNode root = objectMapper.readTree(body);
+		// ⚠️ 최상위만 본다. {@code findValue}는 트리 전체를 훑어서, 응답 어딘가에 같은 이름의
+		// 필드가 끼면(중첩 결과·에러 상세 등) 엉뚱한 값을 성공으로 읽을 수 있다.
+		if ("SUCCESS".equals(string(root.path("resultType")))) {
 			return true;
 		}
-		log.warn("기름종이 알림 발송 거부 (template={}): {}", templateSetCode, body);
+
+		// 실패 이유는 코드와 사유만 남긴다 — 응답을 통째로 실으면 나중에 토스가 본문에 무엇을
+		// 넣든 그대로 로그에 눕는다(수신자 식별자가 섞여 들어올 자리를 만들지 않는다).
+		JsonNode error = root.path("error");
+		String code = string(error.path("errorCode"));
+		String reason = string(error.path("reason"));
+		if (!code.isEmpty() || !reason.isEmpty()) {
+			log.warn("기름종이 알림 발송 거부 (template={}, errorCode={}, reason={})",
+					templateSetCode, code, reason);
+		} else {
+			// 모르는 형태의 응답 — 진단은 해야 하니 앞부분만 자른다.
+			log.warn("기름종이 알림 발송 거부 (template={}): {}", templateSetCode, abbreviate(body));
+		}
 		return false;
+	}
+
+	/** 문자열 노드가 아니면 빈 문자열 — 없는 필드·숫자·객체를 모두 「값 없음」으로 다룬다. */
+	private static String string(JsonNode node) {
+		return node.isString() ? node.stringValue() : "";
+	}
+
+	private static String abbreviate(String body) {
+		return body.length() <= 200 ? body : body.substring(0, 200) + "…(생략)";
 	}
 
 	private RestClient restClient() {

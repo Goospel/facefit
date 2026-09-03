@@ -40,9 +40,24 @@ done
 # 배포를 끊으면, 알림과 무관한 백업까지 같이 죽는다. 없으면 경고만 남기고 넘어간다 —
 # 서버는 그대로 뜨고 알림만 쉰다(다크런치: PUT은 503, 워커는 1회 경고 후 스킵).
 
+# ⚠️ 「없음」과 「못 읽음」을 가른다. 실패 출력을 통째로 버리면 IAM 권한 누락(AccessDenied)·
+#    리전 오타·토큰 만료가 전부 「파라미터 없음」으로 보여, **인증서를 넣었는데 알림이 안 가는**
+#    상태를 배포 로그만 봐서는 영영 설명할 수 없다. ParameterNotFound만 조용히 넘기고,
+#    나머지는 원문을 그대로 stderr에 남긴다(선택 항목이라 배포는 계속된다).
 optional_ssm() {  # $1=파라미터 이름 → 값(없으면 빈 문자열)
-    aws ssm get-parameter --name "/facefit/$1" --with-decryption \
-        --region "$REGION" --query Parameter.Value --output text 2>/dev/null || true
+    local err value
+    err="$(mktemp)"
+    value="$(aws ssm get-parameter --name "/facefit/$1" --with-decryption \
+        --region "$REGION" --query Parameter.Value --output text 2>"$err")" || value=""
+    if [ -s "$err" ]; then
+        if ! grep -q 'ParameterNotFound' "$err"; then
+            echo "[deploy] SSM /facefit/$1 조회 실패 — 아래 원문을 확인하세요:" >&2
+            cat "$err" >&2
+        fi
+        value=""
+    fi
+    rm -f "$err"
+    printf '%s' "$value"
 }
 
 for name in FACEFIT_REMINDER_KEK FACEFIT_REMINDER_TEMPLATE_SET_CODE; do

@@ -76,6 +76,7 @@ class ReminderWorker {
 				log.warn("예약 키를 열지 못했다: {}", e.toString());
 				continue;
 			}
+			// 한 통의 실패가 다음 통을 막지 않는다 — 실패한 행만 남아 다음 분에 다시 시도된다.
 			if (messenger.send(anonKey)) {
 				repository.delete(row.keyHash());
 			}

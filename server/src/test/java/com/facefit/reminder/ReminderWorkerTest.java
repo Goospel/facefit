@@ -9,7 +9,6 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 
-import java.sql.Timestamp;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
@@ -64,13 +63,15 @@ class ReminderWorkerTest {
 		return new ReminderWorker(repository, cipher, messenger, clock);
 	}
 
-	/** 예약 한 행을 직접 심는다 — 컨트롤러를 거치지 않아야 시각을 마음대로 둘 수 있다. */
+	/**
+	 * 예약 한 행을 심는다. 컨트롤러는 거치지 않고(시각을 마음대로 둬야 한다) <b>리포지토리는
+	 * 거친다</b> — 손으로 INSERT를 짜면 시각 변환이 운영 경로와 갈라져, 그 차이가 테스트 실패로
+	 * 위장한다(실측: {@code Timestamp} → UTC {@code LocalDateTime} 전환 때 여기서 났다).
+	 */
 	private String schedule(String rawKey, Instant dueAt) {
 		String hash = "h" + Math.abs(rawKey.hashCode());
 		hash = hash + "0".repeat(64 - hash.length());
-		jdbc.update("INSERT INTO reminder (key_hash, key_enc, due_at, attempts, created_at) "
-						+ "VALUES (?, ?, ?, 0, ?)",
-				hash, cipher.seal(rawKey), Timestamp.from(dueAt), Timestamp.from(dueAt));
+		repository.upsert(hash, cipher.seal(rawKey), dueAt);
 		return hash;
 	}
 
@@ -85,6 +86,37 @@ class ReminderWorkerTest {
 		verify(messenger).send("key-past");
 		verify(messenger, never()).send("key-future");
 		assertThat(attemptsOf(future)).isZero();
+	}
+
+	@Test
+	@DisplayName("한 행이 안 열려도 나머지는 나간다 — 상한 행 하나가 그 분의 모든 예약을 볼모로 잡지 않는다")
+	void tick_unopenableRow_doesNotBlockTheRest() {
+		// 먼저 집히는 행(due가 이르다)의 봉인을 망가뜨린다 — KEK 교체·행 손상과 같은 상태다.
+		String broken = schedule("key-broken", NOW.minus(10, ChronoUnit.MINUTES));
+		jdbc.update("UPDATE reminder SET key_enc = ? WHERE key_hash = ?", new byte[] { 1, 2, 3 }, broken);
+		schedule("key-healthy", NOW.minus(1, ChronoUnit.MINUTES));
+
+		worker().tick();
+
+		verify(messenger).send("key-healthy");
+		// 못 연 행도 시도는 태운다 — 안 그러면 영원히 매분 다시 집힌다.
+		assertThat(attemptsOf(broken)).isOne();
+	}
+
+	@Test
+	@DisplayName("한 통이 실패해도 다음 통은 보낸다 — 첫 실패에서 루프가 멈추면 뒤 예약이 통째로 밀린다")
+	void tick_failedSend_doesNotBlockTheRest() {
+		when(messenger.send(anyString())).thenReturn(false, true);
+		String first = schedule("key-first", NOW.minus(10, ChronoUnit.MINUTES));
+		schedule("key-second", NOW.minus(1, ChronoUnit.MINUTES));
+
+		worker().tick();
+
+		verify(messenger).send("key-first");
+		verify(messenger).send("key-second");
+		// 실패한 행만 남는다(다음 분 재시도), 성공한 행은 지워졌다.
+		assertThat(rowCount()).isOne();
+		assertThat(attemptsOf(first)).isOne();
 	}
 
 	@Test

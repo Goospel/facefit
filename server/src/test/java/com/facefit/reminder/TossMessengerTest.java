@@ -96,6 +96,26 @@ class TossMessengerTest {
 	}
 
 	@Test
+	@DisplayName("error 객체 없이 FAIL만 와도 false — 모르는 형태의 응답을 성공으로 읽지 않는다")
+	void send_failWithoutErrorObject_isFalse() {
+		server.expect(requestTo(SEND_URL))
+				.andRespond(withSuccess("{\"resultType\":\"FAIL\"}", MediaType.APPLICATION_JSON));
+
+		assertThat(messenger().send("anon-key-abc")).isFalse();
+	}
+
+	@Test
+	@DisplayName("resultType이 최상위에 없으면 false — 트리 어딘가의 SUCCESS를 성공으로 오인하지 않는다")
+	void send_nestedResultType_isFalse() {
+		// 트리 전체를 훑는 방식(findValue)이면 이 응답이 성공으로 읽힌다.
+		server.expect(requestTo(SEND_URL))
+				.andRespond(withSuccess("{\"error\":{\"detail\":{\"resultType\":\"SUCCESS\"}}}",
+						MediaType.APPLICATION_JSON));
+
+		assertThat(messenger().send("anon-key-abc")).isFalse();
+	}
+
+	@Test
 	@DisplayName("응답이 비어 있으면 false — 성공의 증거가 없으면 성공이 아니다")
 	void send_emptyBody_isFalse() {
 		server.expect(requestTo(SEND_URL)).andRespond(withSuccess("", MediaType.APPLICATION_JSON));
