@@ -24,6 +24,9 @@ vi.mock('../photoStore', async (orig) => ({
 /** 알림 동의는 토스 웹뷰 브릿지다 — 여기엔 없다. 래퍼 자체는 `notify.test.ts`가 잰다. */
 vi.mock('../notify', () => ({ isNotifySupported: vi.fn(), requestNotifyAgreement: vi.fn() }));
 
+/** 기름종이 카드는 실물(`OilReminder.test.tsx`)이 잰다 — 여기 관심사는 **어디에 놓였나**뿐이다. */
+vi.mock('./OilReminder', () => ({ OilReminder: () => <div data-testid="oil-card" /> }));
+
 afterEach(cleanup);
 
 const TODAY = '2026-08-29';
@@ -268,6 +271,26 @@ describe('아침 알림 진입점', () => {
     await press('unavailable');
 
     expect(screen.getByTestId('notify-right').getAttribute('style')).toContain('999');
+  });
+
+  /*
+    ⚠️ **자리가 곧 의미다**(v5 설계 §3-5). 기름종이 카드는 「알림」 축에 속하므로 아침 알림 행
+    **바로 아래**에 붙는다 — 사이에 다른 것이 끼면 두 개의 알림 설정이 서로 다른 가족처럼
+    읽히고, 「오늘 탭 축소」(⏸)에서 함께 남아야 할 이유도 흐려진다.
+  */
+  it('기름종이 카드가 아침 알림 행 바로 아래에 붙는다 — 같은 카드 가족이다', async () => {
+    setup();
+
+    const row = await screen.findByRole('button', { name: ASK });
+    expect(row.nextElementSibling).toBe(screen.getByTestId('oil-card'));
+  });
+
+  it('알림을 못 받는 기기에서는 기름종이 카드도 없다 — 알림 축이 통째로 빠진다', async () => {
+    vi.mocked(isNotifySupported).mockReturnValue(false);
+    setup();
+    await screen.findByRole('button', { name: '오늘 얼굴 찍기' });
+
+    expect(screen.queryByTestId('oil-card')).toBeNull();
   });
 });
 

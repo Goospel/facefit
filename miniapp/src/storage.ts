@@ -23,6 +23,7 @@ const BACKUP_ENABLED_KEY = 'facefit.backupEnabled';
 const BACKUP_PROMPTED_KEY = 'facefit.backupPrompted';
 const BACKUP_DIRTY_KEY = 'facefit.backupDirty';
 const LAST_BACKUP_AT_KEY = 'facefit.lastBackupAt';
+const OIL_NEXT_AT_KEY = 'facefit.oilNextAt';
 
 /** 제품 상한. 개인이 넘길 수 없는 수다 — 기능 제한이 아니라 **쿼터 방어만** 한다. */
 export const PRODUCT_MAX = 200;
@@ -401,6 +402,35 @@ export function saveLastBackupAt(iso: string, storage: Storage = localStorage): 
     storage.setItem(LAST_BACKUP_AT_KEY, iso);
   } catch {
     // 삼킨다.
+  }
+}
+
+/**
+ * 기름종이 알림의 다음 예약 시각(v5 설계 §3-2). **상태의 단일 출처다** — 화면은 서버를
+ * 조회하지 않고 이 값 하나로 미예약·예약됨·승인 대기를 가른다(판정은 `logic/reminder.ts`).
+ *
+ * `lastBackupAt`과 동형이다: 서버가 준 문자열을 **해석하지 않고** 들고만 있고, 빈 값은
+ * `null`로 접는다. 해석은 판정 함수 한 곳에만 둔다 — 여기서 또 하면 규칙이 두 벌이 된다.
+ */
+export function loadOilNextAt(storage: Storage = localStorage): string | null {
+  try {
+    return storage.getItem(OIL_NEXT_AT_KEY) || null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * 빈 문자열은 **삭제다.** 「그만 받기」·「오늘은 그만」이 곧 이 호출이라, 지우는 경로가 없으면
+ * 사용자에게 되돌릴 방법이 없다. 빈 값을 그대로 써 두면 `loadOilNextAt`이 `null`로 접긴 하지만
+ * 저장소에 죽은 키가 남는다 — 지울 수 있는 것은 지운다.
+ */
+export function saveOilNextAt(iso: string, storage: Storage = localStorage): void {
+  try {
+    if (iso) storage.setItem(OIL_NEXT_AT_KEY, iso);
+    else storage.removeItem(OIL_NEXT_AT_KEY);
+  } catch {
+    // 삼킨다 — 오늘 탭이 알림 저장 때문에 죽으면 주객전도다.
   }
 }
 

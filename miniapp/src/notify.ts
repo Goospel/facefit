@@ -23,6 +23,14 @@ import { Notification } from '@apps-in-toss/web-framework';
 export const TEMPLATE_CODE = 'facefit-daily-photo-reminder';
 
 /**
+ * 기름종이 알림의 CONDITION_BASED 동의문 코드(v5 설계 §3-5).
+ *
+ * ⚠️ **아침 촬영 알림과 다른 동의문이다.** 저쪽은 매일 08:00 정기 발송이고 이쪽은 사용자가
+ * 체크할 때만 나가는 조건 발송이라, 하나로 묶으면 한쪽만 원한 사람에게 다른 쪽까지 켜진다.
+ */
+export const OIL_TEMPLATE_CODE = 'facefit-oil-paper-reminder';
+
+/**
  * 요청의 결말. **토스가 주는 세 갈래를 뭉개지 않는다.**
  *
  * ⚠️ `alreadyAgreed`가 이 타입의 존재 이유다. `Notification`에는 `requestAgreement` 하나뿐이라
@@ -56,8 +64,14 @@ export function isNotifySupported(): boolean {
  * `onDone(result)`는 **어떤 경로로든 반드시 한 번** 불린다(동의·거절·오류·미지원) —
  * 부르는 화면이 콜백을 영영 기다리다 굳는 상태를 안 만든다. 결과가 오면 SDK가 준 cleanup을
  * 여기서 부른다 — 해제를 화면에 떠넘기면 그 화면마다 같은 배선이 반복된다.
+ *
+ * `templateCode`는 **어느 동의문을 여는가**다. 기본값이 촬영 알림인 것은 부르는 자리 대부분이
+ * 그쪽이기 때문이고, 기름종이 카드만 {@link OIL_TEMPLATE_CODE}를 명시한다.
  */
-export function requestNotifyAgreement(onDone: (result: NotifyResult) => void): void {
+export function requestNotifyAgreement(
+  onDone: (result: NotifyResult) => void,
+  templateCode: string = TEMPLATE_CODE,
+): void {
   if (!isNotifySupported()) return void onDone('unavailable');
 
   let cleanup: (() => void) | null = null;
@@ -74,7 +88,7 @@ export function requestNotifyAgreement(onDone: (result: NotifyResult) => void): 
 
   try {
     cleanup = Notification.requestAgreement({
-      options: { templateCode: TEMPLATE_CODE },
+      options: { templateCode },
       // 토스가 준 갈래를 그대로 흘린다 — 좁히는 판단은 화면이 한다(여기서 뭉개면 못 되살린다).
       onEvent: (r) => finish(r.type),
       onError: () => finish('unavailable'),

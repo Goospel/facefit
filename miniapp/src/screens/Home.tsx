@@ -1,10 +1,11 @@
-import { useState, type CSSProperties } from 'react';
+import { useState } from 'react';
 
 import { Icon } from '../components/Icon';
 import { isActive, sortProducts } from '../logic/products';
 import { isNotifySupported, requestNotifyAgreement, type NotifyResult } from '../notify';
 import { VERDICT_KO, type Notes, type Product } from '../storage';
 import { ui } from '../ui';
+import { OilReminder } from './OilReminder';
 import { LOCAL_ONLY, useObjectUrl, usePhotos } from './usePhotos';
 
 /**
@@ -36,34 +37,11 @@ const NOTIFY_TEXT: Record<NotifyResult, { sub: string; right: string; tone: 'on'
 
 const NOTIFY_IDLE = { sub: '매일 아침 8시에 찍을 시간을 알려드려요', right: '받기', tone: 'off' } as const;
 
-const TONE_COLOR = { on: 'var(--blue)', off: 'var(--text-sub)', warn: 'var(--amber)' } as const;
-
-/** 테두리는 분리 속성으로 쓴다(`ui.ts` 머리말). */
-const notifyPillStyle: CSSProperties = {
-  flexShrink: 0,
-  padding: '8px 14px',
-  fontSize: 14,
-  fontWeight: 600,
-  whiteSpace: 'nowrap',
-  borderRadius: 999,
-  borderWidth: 1,
-  borderStyle: 'solid',
-  borderColor: 'var(--blue)',
-  background: '#fff',
-  color: 'var(--blue)',
-};
-
-/** 켜진 뒤의 표시. 알약이 아니라 **표식 + 글자**다 — 행동이 아니라 사실이다. */
-const notifyDoneStyle: CSSProperties = {
-  flexShrink: 0,
-  display: 'flex',
-  alignItems: 'center',
-  gap: 4,
-  fontSize: 14,
-  fontWeight: 600,
-  whiteSpace: 'nowrap',
-  color: 'var(--blue-dark)',
-};
+/**
+ * 켜짐 글자색이 `--blue`가 아니라 `--blue-dark`인 것은 접근성이다 — `--blue`는 3.3:1로 보통
+ * 글자 AA(4.5:1)에 못 미친다(`index.css` 주석의 계산). 기름종이 카드와 **같은 값**이다.
+ */
+const TONE_COLOR = { on: 'var(--blue-dark)', off: 'var(--text-sub)', warn: 'var(--amber)' } as const;
 
 export function Home({
   products,
@@ -205,11 +183,16 @@ export function Home({
               상태에 두면 도로 「눌러야 할 것」으로 읽힌다. `warn`은 알약 그대로다(못 물어봤으니
               다시 누르라는 뜻이 맞다). 장식이라 `aria-hidden` — 이름은 버튼의 `aria-label`이다.
             */}
-            <span aria-hidden data-testid="notify-right" style={on ? notifyDoneStyle : notifyPillStyle}>
+            <span aria-hidden data-testid="notify-right" style={on ? ui.doneMark : ui.pill}>
               {on && <Icon name="check" size={16} />}
               {notify.right}
             </span>
           </button>
+          {/*
+            기름종이 알림(v5 설계 §3-5). **알림 행 바로 아래** — 같은 「알림」 축이라 사이에
+            다른 것이 끼면 두 설정이 서로 다른 가족처럼 읽힌다. 지원 조건은 컴포넌트 안에 있다.
+          */}
+          <OilReminder />
         </>
       )}
 

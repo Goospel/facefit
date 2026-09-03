@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { isNotifySupported, requestNotifyAgreement, TEMPLATE_CODE } from './notify';
+import { isNotifySupported, OIL_TEMPLATE_CODE, requestNotifyAgreement, TEMPLATE_CODE } from './notify';
 
 /**
  * 알림 동의 요청 래퍼(설계 §2-2·§3-2).
@@ -83,6 +83,19 @@ describe('알림 동의 요청 — 결과 전달', () => {
     // 동의 시트가 안 뜨고, 그건 앱 안에서 구별할 방법이 없는 실패다.
     expect(callbacks().options.templateCode).toBe('facefit-daily-photo-reminder');
     expect(TEMPLATE_CODE).toBe('facefit-daily-photo-reminder');
+  });
+
+  /*
+    ⚠️ 동의문이 **기능마다 따로**다(v5 설계 §3-5). 아침 촬영 알림은 REGULAR 정기 발송이고
+    기름종이 알림은 CONDITION_BASED 조건 발송이라, 하나로 묶으면 한쪽만 원한 사용자에게
+    다른 쪽까지 켜진다. 그래서 코드를 **인자로** 받되 기본값은 기존 상수로 둔다 —
+    이미 부르고 있는 자리들을 다 고치는 변경은 이 기능이 요구하지 않는다.
+  */
+  it('두 번째 인자로 준 코드로 연다 — 기름종이 동의문은 아침 알림과 다른 동의문이다', () => {
+    requestNotifyAgreement(vi.fn(), OIL_TEMPLATE_CODE);
+
+    expect(callbacks().options.templateCode).toBe('facefit-oil-paper-reminder');
+    expect(OIL_TEMPLATE_CODE).toBe('facefit-oil-paper-reminder');
   });
 
   it.each(['newAgreement', 'alreadyAgreed'] as const)('%s를 뭉개지 않고 그대로 넘긴다', (type) => {
