@@ -213,7 +213,7 @@
 | `reminder/TossMessenger.java` (신설) | `interface`가 아니라 클래스 하나 — `boolean send(String anonKey)`: mTLS `HttpClient`(`@Lazy` 생성 · PEM → `SSLContext`) · `POST send-message` · `resultType == SUCCESS`. 테스트는 `@MockitoBean`으로 대체 |
 | `reminder/ReminderWorker.java` (신설) | `@Scheduled(fixedDelay=60_000)` — §3-4 워커 + `purge` |
 | `FacefitApplication.java` | `@EnableScheduling` |
-| `application.properties` / `-test.properties` | `facefit.reminder.interval-minutes=180` · `template-set-code=`(절차 7 값) · `kek=${FACEFIT_REMINDER_KEK}` · `mtls.cert-pem=${FACEFIT_TOSS_MTLS_CERT_PEM}` · `mtls.key-pem=${FACEFIT_TOSS_MTLS_KEY_PEM}` · `ratelimit.reminder-put-per-key-per-minute=6`. 테스트 프로파일은 고정 KEK · 빈 PEM(워커는 `@MockitoBean` 메신저) |
+| `application.properties` / `-test.properties` | `facefit.reminder.interval-minutes=180` · `template-set-code=`(절차 7 값) · `kek=${FACEFIT_REMINDER_KEK}` · `ratelimit.reminder-put-per-key-per-minute=6`. **PEM 내용은 프로퍼티로 안 들어간다(구현 정정 2026-09-03)** — Spring SSL 번들(`facefit.toss.ssl-bundle=toss`)을 쓰고, 배포 스크립트가 SSM 파라미터(`FACEFIT_TOSS_MTLS_CERT_PEM`·`FACEFIT_TOSS_MTLS_KEY_PEM` — **이름은 그대로**)를 `/etc/facefit/toss/client-{cert,key}.pem` **파일**로 떨어뜨린 뒤 `SPRING_SSL_BUNDLE_PEM_TOSS_KEYSTORE_CERTIFICATE`·`..._PRIVATE_KEY` 두 환경변수로 **경로만** 넘긴다(BookTimer와 같은 방식). 테스트 프로파일은 고정 KEK · 번들 없음(워커는 mock 메신저) |
 | `deploy/deploy-on-ec2.sh` | SSM 이름 루프에 3개 추가 |
 
 **TDD 태스크 (Red 케이스 먼저)**

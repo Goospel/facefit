@@ -69,4 +69,40 @@ class MigrationTest {
 								"c".repeat(64), "{}", LocalDateTime.now())))
 				.isNotNull();
 	}
+
+	@Test
+	@DisplayName("reminder 테이블에 쓰고 읽을 수 있다 — V2가 적용됐다는 뜻")
+	void reminderTable_roundTrips() {
+		jdbc.update(
+				"INSERT INTO reminder (key_hash, key_enc, due_at, attempts, created_at) VALUES (?, ?, ?, ?, ?)",
+				"d".repeat(64), new byte[] { 1, 2, 3 }, LocalDateTime.now(), 0, LocalDateTime.now());
+
+		byte[] enc = jdbc.queryForObject(
+				"SELECT key_enc FROM reminder WHERE key_hash = ?", byte[].class, "d".repeat(64));
+
+		assertThat(enc).containsExactly(1, 2, 3);
+	}
+
+	@Test
+	@DisplayName("attempts 기본값은 0 — 새 예약은 시도 이력 없이 시작한다")
+	void reminderTable_attemptsDefaultsToZero() {
+		jdbc.update("INSERT INTO reminder (key_hash, key_enc, due_at, created_at) VALUES (?, ?, ?, ?)",
+				"e".repeat(64), new byte[] { 9 }, LocalDateTime.now(), LocalDateTime.now());
+
+		Integer attempts = jdbc.queryForObject(
+				"SELECT attempts FROM reminder WHERE key_hash = ?", Integer.class, "e".repeat(64));
+
+		assertThat(attempts).isZero();
+	}
+
+	@Test
+	@DisplayName("due_at 인덱스가 있다 — 워커가 분마다 도는 조회가 풀스캔이면 안 된다")
+	void reminderTable_hasDueIndex() {
+		Integer found = jdbc.queryForObject(
+				"SELECT COUNT(*) FROM INFORMATION_SCHEMA.INDEXES "
+						+ "WHERE UPPER(TABLE_NAME) = 'REMINDER' AND UPPER(INDEX_NAME) = 'IDX_REMINDER_DUE'",
+				Integer.class);
+
+		assertThat(found).isPositive();
+	}
 }

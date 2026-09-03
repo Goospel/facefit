@@ -21,6 +21,11 @@ services:
       # 띄우는 수십 초 동안 물리 메모리를 넘기므로**, facefit 몫을 작게 유지하는 것이 유일한 통제다.
       # 작은 힙에서는 SerialGC가 G1보다 메모리를 덜 쓴다. UTC는 MySQL 컨테이너와 축을 맞춘다.
       JAVA_TOOL_OPTIONS: "-Xmx160m -XX:MaxMetaspaceSize=96m -XX:+UseSerialGC -Duser.timezone=UTC"
+    volumes:
+      # 토스 발송용 mTLS 인증서 2장(설계 §4). deploy-on-ec2.sh가 SSM에서 받아 ./toss 에 떨어뜨리고,
+      # 경로는 .env 의 SPRING_SSL_BUNDLE_PEM_TOSS_KEYSTORE_* 두 줄과 짝이다.
+      # ⚠️ PEM이 아직 없으면 그 두 줄도 안 실린다 — 번들 미설정 = 알림만 쉬는 상태(다크런치).
+      - ./toss:/etc/facefit/toss:ro
     # 상한의 목적은 총량 예약이 아니라 **격리**다 — facefit이 새면 facefit만 죽고 BookTimer는 산다.
     # 상한이 없으면 호스트 OOM 킬러가 둘 중 아무나 고른다.
     mem_limit: 320m

@@ -328,7 +328,10 @@ app 388MB · mysql 240MB로 한참 낮다. facefit(149MB)까지 얹고 blue/gree
 - [ ] ⬜ **절차 2 · SSM 파라미터 3개** — `FACEFIT_REMINDER_KEK`(Claude) · `FACEFIT_TOSS_MTLS_CERT_PEM` · `FACEFIT_TOSS_MTLS_KEY_PEM`(인증서 발급 뒤)
 - [ ] ⬜ **절차 3 · CONDITION_BASED 동의문** — `termsId`: ____
 - [ ] ⬜ **절차 4 · 익명 키 스모크**(`anon-key/verify`) — 거부되면 **토스 로그인(ⓐ′)** 로 간다(사용자 결정)
-- [ ] ⬜ **S-1~S-4 서버** — 마이그레이션·KeyCipher·API·워커·메신저(TDD) → PR
+- [x] ✅ **S-1~S-4 서버** — 마이그레이션·KeyCipher·API·워커·메신저(TDD · 서버 테스트 89건) → PR
+  - **다크런치**: KEK·템플릿 코드·mTLS PEM 중 하나라도 없으면 알림만 쉰다(PUT은 503 · 워커는 1회 경고 후 스킵).
+    「PEM이 있는데 못 읽는」 경우(파일 삭제·권한·형식)도 같은 취급이다 — 번들을 실제로 만들어 보고 판정한다.
+    그래서 절차 1~3보다 먼저 머지해도 안전하다 — 배포 스크립트도 새 SSM 파라미터가 없으면 경고만 남기고 넘어간다.
 - [ ] ⬜ **C-1~C-4 앱** — storage·reminder 로직·notify 인자화·OilReminder 카드·랜딩(TDD) → PR
 - [ ] ⬜ **절차 5~7 · SERVER 템플릿 → 검수 → 테스트 발송** — `templateSetCode`: ____
 - [ ] ⬜ **S-5 배포·스모크 → C-5 번들·실기기(게이트 1회전) → 상세 설명 한 줄(같은 턴) → 검수 제출**
