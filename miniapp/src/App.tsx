@@ -9,6 +9,7 @@ import {
   uploadBackup,
   type BackupBlob,
 } from './logic/backup';
+import { readInitialTab } from './logic/landing';
 import { FacePhoto } from './screens/FacePhoto';
 import { History } from './screens/History';
 import { Home } from './screens/Home';
@@ -71,7 +72,12 @@ const BACKUP_DEBOUNCE_MS = 5000;
 
 export function App() {
   const [onboarded, setOnboarded] = useState(isOnboarded);
-  const [tab, setTab] = useState<Tab>('products');
+  /**
+   * 시작 탭. 기본은 제품이고(v4-1 §3-1), **푸시로 들어온 경우에만** 오늘 탭이다 —
+   * 기름종이 승인 버튼이 거기 있어서, 이 배선이 없으면 알림을 받고도 갈 곳을 모른다(v5 §7-4).
+   * 초기값 계산이라 렌더마다 다시 읽지 않는다.
+   */
+  const [tab, setTab] = useState<Tab>(() => readInitialTab() ?? 'products');
   /**
    * 전체화면. **값 하나가 「촬영이냐 타임랩스냐 아니냐」를 다 말한다** — boolean 둘로 두면
    * 둘 다 켜진 상태가 생기고, 그때 무엇을 그릴지 화면이 정해야 한다.

@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { App } from './App';
 import { listPhotos } from './photoStore';
+import { readInitialTab } from './logic/landing';
 import { loadProducts, loadNotes } from './storage';
 
 /**
@@ -38,6 +39,15 @@ vi.mock('./logic/backup', async (orig) => ({
   deleteBackup: vi.fn(async () => true),
 }));
 
+/**
+ * 푸시 랜딩도 목이다 — `Environment.initialURL`은 토스 웹뷰 전역이라 여기엔 없다.
+ * 실물(스킴 파싱·토스 밖 예외)은 `logic/landing.test.ts`가 잰다.
+ *
+ * ⚠️ 기본은 **아무 말도 안 하는 진입**(`null`)이다 — 그래야 기존 테스트들이 시작 탭 때문에
+ * 흔들리지 않고, 푸시로 들어온 경우를 재는 쪽이 그걸 명시적으로 켠다.
+ */
+vi.mock('./logic/landing', () => ({ readInitialTab: vi.fn(() => null) }));
+
 afterEach(cleanup);
 
 const tab = (name: string) => screen.getByRole('button', { name });
@@ -46,6 +56,8 @@ beforeEach(() => {
   localStorage.clear();
   vi.clearAllMocks();
   vi.mocked(listPhotos).mockResolvedValue([]);
+  // 기본은 평소 진입이다 — 푸시로 들어온 경우를 재는 쪽이 명시적으로 켠다.
+  vi.mocked(readInitialTab).mockReturnValue(null);
   URL.createObjectURL = vi.fn(() => 'blob:x');
   URL.revokeObjectURL = vi.fn();
   // jsdom에는 카메라가 없다. 촬영 화면은 「쓸 수 없어요」로 뜨는데, 배선을 재기엔 그걸로 족하다.
@@ -69,6 +81,29 @@ describe('온보딩이 가장 앞이다', () => {
     expect(tab('제품').getAttribute('aria-current')).toBe('page');
     expect(screen.getByRole('heading', { name: '제품' })).toBeTruthy();
     expect(screen.queryByRole('heading', { name: '오늘' })).toBeNull();
+  });
+
+  /*
+    ⚠️ **푸시를 탭한 사람은 오늘 탭으로 들어와야 한다**(v5 설계 §3-5·§7-4). 기름종이 승인
+    버튼은 오늘 탭에 있는데 시작 탭은 제품이라, 이 배선이 없으면 알림을 받고도 「그래서 어디로
+    가라는 거지」가 된다. 반대로 **아무 값도 안 실린 평소 진입은 제품 탭 그대로**다 —
+    부르지 않은 얼굴 사진이 앱을 열자마자 뜨는 것을 v4-1에서 고쳤다.
+  */
+  it('푸시 스킴으로 들어오면 오늘 탭에서 시작한다', () => {
+    vi.mocked(readInitialTab).mockReturnValue('home');
+    localStorage.setItem('facefit.onboarded', '1');
+
+    render(<App />);
+
+    expect(tab('오늘').getAttribute('aria-current')).toBe('page');
+  });
+
+  it('평소 진입은 제품 탭 그대로다 — 스킴이 말하지 않으면 아무것도 안 바꾼다', () => {
+    localStorage.setItem('facefit.onboarded', '1');
+
+    render(<App />);
+
+    expect(tab('제품').getAttribute('aria-current')).toBe('page');
   });
 
   it('탭 순서는 제품 · 오늘 · 기록이다 — 첫 자리가 첫 화면이다', () => {

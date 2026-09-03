@@ -10,6 +10,7 @@ import {
   isOnboarded,
   loadLastBackupAt,
   loadNotes,
+  loadOilNextAt,
   loadProducts,
   loadUsage,
   newId,
@@ -19,6 +20,7 @@ import {
   saveBackupPrompted,
   saveLastBackupAt,
   saveNote,
+  saveOilNextAt,
   saveNotifyPrompted,
   saveOnboarded,
   saveProducts,
@@ -510,6 +512,43 @@ describe('마지막 백업 시각 — loadLastBackupAt / saveLastBackupAt', () =
   it('저장소가 막혀 있어도 던지지 않는다', () => {
     expect(loadLastBackupAt(fakeStorage({ throwOnGet: true }))).toBeNull();
     expect(() => saveLastBackupAt('2026-09-01T00:00:00.000Z', fakeStorage({ throwOnSet: true }))).not.toThrow();
+  });
+});
+
+/**
+ * 기름종이 알림의 예약 시각(v5 설계 §3-2). **상태의 단일 출처다** — 화면은 서버를 조회하지
+ * 않고 이 값 하나로 미예약·예약됨·승인 대기를 가른다(판정은 `logic/reminder.ts`).
+ */
+describe('기름종이 알림 시각 — loadOilNextAt / saveOilNextAt', () => {
+  it('없으면 null이다 — 예약한 적 없는 것이 정상 시작점이다', () => {
+    expect(loadOilNextAt(fakeStorage())).toBeNull();
+  });
+
+  it('서버가 준 문자열을 그대로 돌려준다 — 해석은 판정 함수의 일이다', () => {
+    const s = fakeStorage();
+
+    saveOilNextAt('2026-09-03T09:20:00Z', s);
+
+    expect(loadOilNextAt(s)).toBe('2026-09-03T09:20:00Z');
+  });
+
+  /*
+    ⚠️ **지우는 경로가 있어야 「그만 받기」가 성립한다.** 값을 비우지 못하면 취소를 눌러도
+    카드가 계속 「예약됨」이라 말하고, 사용자에게는 되돌릴 방법이 없다.
+  */
+  it('빈 문자열은 삭제다 — 그만 받기가 곧 이 호출이다', () => {
+    const s = fakeStorage();
+    saveOilNextAt('2026-09-03T09:20:00Z', s);
+
+    saveOilNextAt('', s);
+
+    expect(loadOilNextAt(s)).toBeNull();
+    expect(s.getItem('facefit.oilNextAt')).toBeNull();
+  });
+
+  it('저장소가 막혀 있어도 던지지 않는다', () => {
+    expect(loadOilNextAt(fakeStorage({ throwOnGet: true }))).toBeNull();
+    expect(() => saveOilNextAt('2026-09-03T09:20:00Z', fakeStorage({ throwOnSet: true }))).not.toThrow();
   });
 });
 

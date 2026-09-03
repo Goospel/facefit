@@ -5,6 +5,7 @@ import { isActive, sortProducts } from '../logic/products';
 import { isNotifySupported, requestNotifyAgreement, type NotifyResult } from '../notify';
 import { VERDICT_KO, type Notes, type Product } from '../storage';
 import { ui } from '../ui';
+import { OilReminder } from './OilReminder';
 import { LOCAL_ONLY, useObjectUrl, usePhotos } from './usePhotos';
 
 /**
@@ -210,6 +211,11 @@ export function Home({
               {notify.right}
             </span>
           </button>
+          {/*
+            기름종이 알림(v5 설계 §3-5). **알림 행 바로 아래** — 같은 「알림」 축이라 사이에
+            다른 것이 끼면 두 설정이 서로 다른 가족처럼 읽힌다. 지원 조건은 컴포넌트 안에 있다.
+          */}
+          <OilReminder />
         </>
       )}
 

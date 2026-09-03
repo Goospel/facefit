@@ -22,6 +22,7 @@
      각 항목의 frontmatter(summary)에서 재생성합니다. 내용을 바꾸려면 그 항목의
      summary를 고치세요(단일 출처). 최신 항목이 위. -->
 
+- [T-018](troubleshooting/T-018.md) · vitest 기본 forks 풀이 워커 시작 타임아웃으로 파일 4개를 통째로 못 돌렸다 — 「전체 통과」를 세려던 테스트 수가 572→290으로 조용히 줄었다
 - [T-017](troubleshooting/T-017.md) · 테스트 주입용 생성자를 하나 더 달았더니 스프링 빈이 「No default constructor found」로 죽었다 — 생성자가 둘이면 스프링은 고르지 않고, 실패는 그 클래스가 아니라 애먼 테스트의 컨텍스트 로딩 실패로 나타난다
 - [T-016](troubleshooting/T-016.md) · visibility hidden으로 자리만 지킨 스위치를 getByRole이 hidden true로도 못 찾았다 — 접근성 트리에서 빠진 요소는 이름 계산 자체가 빈 문자열이라 name 옵션과 영영 안 맞는다
 - [T-015](troubleshooting/T-015.md) · <label> 안에 안내 한 줄을 넣었더니 그 칸의 접근성 이름이 「사용 빈도촬영할 때…」로 붙어 getByLabelText가 못 찾았다 — 스크린리더가 듣는 이름도 같이 오염된다
