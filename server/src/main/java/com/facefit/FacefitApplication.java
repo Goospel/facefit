@@ -2,6 +2,10 @@ package com.facefit;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.context.annotation.Bean;
+import org.springframework.scheduling.annotation.EnableScheduling;
+
+import java.time.Clock;
 
 /**
  * facefit API 서버 진입점.
@@ -15,9 +19,20 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
  * 동시에 거짓이 된다.
  */
 @SpringBootApplication
+@EnableScheduling
 public class FacefitApplication {
 
 	public static void main(String[] args) {
 		SpringApplication.run(FacefitApplication.class, args);
+	}
+
+	/**
+	 * 시계는 <b>주입 가능한 하나</b>여야 한다 — 예약 시각(설계 §3-2)이 서버 시계로 정해지고,
+	 * 「밤에도 그대로 예약된다」 같은 결정을 테스트가 재현하려면 시각을 고정할 수 있어야 한다.
+	 * 컨테이너 JVM은 UTC로 뜨지만({@code -Duser.timezone=UTC}) 여기서 한 번 더 못 박는다.
+	 */
+	@Bean
+	Clock clock() {
+		return Clock.systemUTC();
 	}
 }
