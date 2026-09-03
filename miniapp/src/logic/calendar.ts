@@ -69,3 +69,13 @@ export function daysBetween(from: string, to: string): number {
 export function formatYm(ym: Ym): string {
   return `${ym.year}년 ${ym.month}월`;
 }
+
+/**
+ * `2026-08-01` → `8월 1일`. **연도는 안 적는다** — 같은 줄이 길어지기만 한다.
+ *
+ * 화면 셋(제품 카드의 사용 기간 · 기록 탭 변화 보기 · 타임랩스 날짜 배지)이 같은 문구를
+ * 쓰므로 여기 하나로 둔다. 셋이 제각기 슬라이스를 들고 있으면 한 곳만 고쳐지는 날이 온다.
+ */
+export function formatMd(date: string): string {
+  return `${Number(date.slice(5, 7))}월 ${Number(date.slice(8))}일`;
+}

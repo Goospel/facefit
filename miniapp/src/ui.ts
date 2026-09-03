@@ -85,7 +85,6 @@ export const ui: S = {
     borderColor: 'var(--line)',
     borderRadius: 999,
   },
-  empty: { padding: '48px 20px', textAlign: 'center', color: 'var(--text-weak)', fontSize: 14 },
 
   /**
    * 화면 밑에 붙어 따라오는 버튼 자리.

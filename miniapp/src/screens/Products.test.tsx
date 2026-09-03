@@ -142,6 +142,23 @@ describe('찍기 CTA · 찍은 뒤 행 — 사진은 그리지 않는다', () =>
     fireEvent.click(btn('제품 추가'));
     expect(btn('오늘 얼굴 찍기')).toBeTruthy();
   });
+
+  it('첫 진입 카드 안의 찍은 뒤 행은 카드가 아니다 — 카드 안 카드는 테두리가 겹쳐 보인다', async () => {
+    setup([], { photos: [TODAY] });
+    await flush();
+
+    const row = screen.getByText('오늘 찍었어요').closest('div') as HTMLElement;
+    expect(row.style.background).toBe('');
+    expect(row.style.border).toBe('');
+  });
+
+  it('목록 상태의 찍은 뒤 행은 그대로 카드다', async () => {
+    setup([p()], { photos: [TODAY] });
+    await flush();
+
+    const row = screen.getByText('오늘 찍었어요').closest('div') as HTMLElement;
+    expect(row.style.background).toBe('var(--bg-sub)');
+  });
 });
 
 describe('파란 버튼은 하나 — 지금 할 일을 따라간다', () => {
@@ -176,6 +193,15 @@ describe('파란 버튼은 하나 — 지금 할 일을 따라간다', () => {
     expect(screen.getByText('오늘 찍었어요')).toBeTruthy();
     expect(blueButtons().map(nameOf)).toEqual(['제품 추가']);
   });
+
+  it('번호 원도 「지금 할 것」을 말한다 — ①만 파랗고 ②는 회색이다', async () => {
+    setup();
+    await flush();
+
+    // 파란 버튼과 같은 신호를 원이 한 번 더 준다 — 버튼 색 하나에 기대면 흘끗 보는 사람이 놓친다.
+    expect(screen.getByText('1').style.background).toBe('var(--blue)');
+    expect(screen.getByText('2').style.background).toBe('var(--line)');
+  });
 });
 
 describe('제품 목록', () => {
@@ -183,6 +209,14 @@ describe('제품 목록', () => {
     setup();
     expect(screen.getByText('시작은 두 가지면 돼요')).toBeTruthy();
     // 첫 화면이 된 탭이라 기기 전용 고지가 여기에도 선다.
+    expect(screen.getByText(/사진은 이 기기에만 저장되며/)).toBeTruthy();
+  });
+
+  it('첫 등록 폼을 열어도 기기 전용 고지는 남는다 — 카드에 딸려 사라지면 고지가 없는 화면이 된다', () => {
+    setup();
+    fireEvent.click(btn('제품 추가'));
+
+    expect(screen.queryByText('시작은 두 가지면 돼요')).toBeNull();
     expect(screen.getByText(/사진은 이 기기에만 저장되며/)).toBeTruthy();
   });
 

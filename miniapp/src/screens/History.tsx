@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 
 import { Icon } from '../components/Icon';
-import { addMonth, formatYm, monthCells, monthOf, type Ym } from '../logic/calendar';
+import { addMonth, formatMd, formatYm, monthCells, monthOf, type Ym } from '../logic/calendar';
 import { clearPhotos, deletePhoto, type FacePhoto, type PhotoDb } from '../photoStore';
 import { todayKey, VERDICT_KO, type Notes, type Verdict } from '../storage';
 import { ui } from '../ui';
@@ -288,7 +288,7 @@ function ChangeCard({ photos, onOpen }: { photos: FacePhoto[]; onOpen: () => voi
       <span style={{ flex: 1 }}>
         <span style={{ display: 'block', fontSize: 15, fontWeight: 600 }}>얼굴 변화 보기</span>
         <span style={{ display: 'block', fontSize: 13, marginTop: 2, color: 'var(--text-sub)' }}>
-          {`${photos.length}장 · ${md(photos[0].date)} ~ ${md(latest.date)}`}
+          {`${photos.length}장 · ${formatMd(photos[0].date)} ~ ${formatMd(latest.date)}`}
         </span>
       </span>
       {/* 이 화면의 유일한 파란 버튼이다(UX 1차 「파란 버튼은 하나」). */}
@@ -302,9 +302,6 @@ function ChangeCard({ photos, onOpen }: { photos: FacePhoto[]; onOpen: () => voi
     </div>
   );
 }
-
-/** `8월 1일`. 연도는 안 적는다 — 같은 줄이 길어지기만 한다(`Products.tsx`의 같은 규칙). */
-const md = (d: string) => `${Number(d.slice(5, 7))}월 ${Number(d.slice(8))}일`;
 
 const grid: React.CSSProperties = { display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 2, marginTop: 12 };
 

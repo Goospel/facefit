@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 
 import { Icon } from '../components/Icon';
 import { formatBackupTime } from '../logic/backup';
-import { daysBetween } from '../logic/calendar';
+import { daysBetween, formatMd } from '../logic/calendar';
 import { keepsSnapshot, searchProducts, type Suggestion } from '../logic/mfds';
 import { CATEGORY_KO, isActive, sortProducts } from '../logic/products';
 import {
@@ -149,6 +149,13 @@ export function Products({
         />
       )}
 
+      {/*
+        제품 탭이 첫 화면이 된 뒤로 검수자가 처음 보는 화면인데 이 고지가 없었다.
+        ⚠️ **첫 진입 카드에 딸려 두지 않는다** — 폼을 열면 카드가 사라지므로 고지까지 같이
+        사라져, 제품을 처음 등록하는 그 화면에만 고지가 없어진다.
+      */}
+      {products.length === 0 && <p style={{ ...ui.sub, textAlign: 'center', margin: '12px 0 0' }}>{LOCAL_ONLY}</p>}
+
       {active.length > 0 && (
         <Section title="사용 중" testId="section-active">
           {active.map((p) => (
@@ -203,36 +210,32 @@ function StartCard({
   onShoot: () => void;
 }) {
   return (
-    <>
-      <div style={{ ...ui.card, display: 'grid', gap: 16 }}>
-        <b style={{ fontSize: 17, fontWeight: 700 }}>시작은 두 가지면 돼요</b>
+    <div style={{ ...ui.card, display: 'grid', gap: 16 }}>
+      <b style={{ fontSize: 17, fontWeight: 700 }}>시작은 두 가지면 돼요</b>
 
-        <div style={{ display: 'grid', gap: 8 }}>
-          <Step n={1} now title="쓰는 제품 등록" desc="이름만 적어도 돼요 · 사진과 함께 기간이 남아요" />
-          {/* 화면 유일의 파란 버튼. 헤더 「추가」는 0개일 때 없으므로 「제품 추가」는 여전히 0개 또는 1개다. */}
-          <button style={ui.primary} onClick={onAdd}>
-            제품 추가
-          </button>
-        </div>
-
-        <div style={{ display: 'grid', gap: 8 }}>
-          <Step
-            n={2}
-            title="오늘 얼굴 한 장"
-            /*
-              「파랗게 바뀌어요」는 **약속**이라 참인 동안만 산다 — 등록이 끝나면 §3-2의 파란 CTA가
-              선다. 이미 찍은 사람에게는 그 약속이 거짓이므로(찍은 날은 파란 버튼이 0개다) 그때는
-              같은 자리에서 다른 말을 한다.
-            */
-            desc={shot ? '매일 같은 구도로 · 오늘 몫은 이미 끝냈어요' : '매일 같은 구도로 · 등록이 끝나면 이 버튼이 파랗게 바뀌어요'}
-          />
-          {shot ? <ShotRow verdict={verdict} onShoot={onShoot} /> : <ShootCta onShoot={onShoot} tone="secondary" />}
-        </div>
+      <div style={{ display: 'grid', gap: 8 }}>
+        <Step n={1} now title="쓰는 제품 등록" desc="이름만 적어도 돼요 · 사진과 함께 기간이 남아요" />
+        {/* 화면 유일의 파란 버튼. 헤더 「추가」는 0개일 때 없으므로 「제품 추가」는 여전히 0개 또는 1개다. */}
+        <button style={ui.primary} onClick={onAdd}>
+          제품 추가
+        </button>
       </div>
 
-      {/* 제품 탭이 첫 화면이 된 뒤로 검수자가 처음 보는 화면인데 이 고지가 없었다. */}
-      <p style={{ ...ui.sub, textAlign: 'center', margin: '12px 0 0' }}>{LOCAL_ONLY}</p>
-    </>
+      <div style={{ display: 'grid', gap: 8 }}>
+        <Step
+          n={2}
+          title="오늘 얼굴 한 장"
+          /*
+            「파랗게 바뀌어요」는 **약속**이라 참인 동안만 산다 — 등록이 끝나면 §3-2의 파란 CTA가
+            선다. 이미 찍은 사람에게는 그 약속이 거짓이므로(찍은 날은 파란 버튼이 0개다) 그때는
+            같은 자리에서 다른 말을 한다.
+          */
+          desc={shot ? '매일 같은 구도로 · 오늘 몫은 이미 끝냈어요' : '매일 같은 구도로 · 등록이 끝나면 이 버튼이 파랗게 바뀌어요'}
+        />
+        {/* 카드 안이라 `bare` — 카드 안 카드는 테두리가 겹쳐 보인다. */}
+        {shot ? <ShotRow verdict={verdict} onShoot={onShoot} bare /> : <ShootCta onShoot={onShoot} tone="secondary" />}
+      </div>
+    </div>
   );
 }
 
@@ -307,10 +310,15 @@ function ShootCta({ onShoot, tone = 'primary' }: { onShoot: () => void; tone?: '
  *
  * DB가 열리기 전 한 프레임은 찍기 CTA로 뜰 수 있다 — 오늘 탭이 첫 화면이던 때와 같은
  * 깜빡임이라 받아들인다.
+ *
+ * `bare`는 **첫 진입 카드 안**에서만 쓴다 — 거기서는 이미 카드 안이라, 카드 톤을 한 번 더
+ * 두르면 테두리가 겹쳐 보인다. 값은 자리마다 고정이라 같은 요소에서 뒤집히지 않는다
+ * (뒤집히면 shorthand `border`가 리렌더에서 지워지는 그 함정에 걸린다 — `ui.ts` 머리말).
  */
-function ShotRow({ verdict, onShoot }: { verdict: Verdict | undefined; onShoot: () => void }) {
+function ShotRow({ verdict, onShoot, bare = false }: { verdict: Verdict | undefined; onShoot: () => void; bare?: boolean }) {
+  const row: React.CSSProperties = { display: 'flex', alignItems: 'center', gap: 10 };
   return (
-    <div style={{ ...ui.card, display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px' }}>
+    <div style={bare ? row : { ...ui.card, ...row, padding: '12px 16px' }}>
       <span
         style={{
           display: 'flex',
@@ -522,9 +530,6 @@ function Section({ title, testId, children }: { title: string; testId: string; c
   );
 }
 
-/** `8월 1일` — 종료한 제품의 기간 표시용. 연도는 안 적는다(같은 줄이 길어지기만 한다). */
-const md = (d: string) => `${Number(d.slice(5, 7))}월 ${Number(d.slice(8))}일`;
-
 /**
  * 제품 카드(v4-1 §3-3). **카드 전체가 버튼이고 안에 다른 버튼은 없다** — 메인 페이지에
  * 카드마다 버튼 셋이 깔리면 목록이 아니라 조작판으로 읽힌다. 수정·종료·삭제는 폼 안에 산다.
@@ -593,7 +598,7 @@ function Card({
           {/* 「가끔」만 선다 — 매일이 기본이라 그 칩은 아무 말도 안 하면서 자리만 먹는다. */}
           {occasional && <span style={ui.chip}>{FREQUENCY_KO.occasional}</span>}
           {product.mfds && <MfdsMeta m={product.mfds} />}
-          {ended && <span style={{ fontSize: 12, color: 'var(--text-sub)' }}>{`${md(product.startDate)} ~ ${md(ended)}`}</span>}
+          {ended && <span style={{ fontSize: 12, color: 'var(--text-sub)' }}>{`${formatMd(product.startDate)} ~ ${formatMd(ended)}`}</span>}
         </span>
       </span>
       <span style={{ color: 'var(--text-weak)', display: 'flex' }}>

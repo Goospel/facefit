@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { todayKey } from '../storage';
-import { addMonth, daysBetween, formatYm, monthCells, monthOf } from './calendar';
+import { addMonth, daysBetween, formatMd, formatYm, monthCells, monthOf } from './calendar';
 
 /**
  * 달력 격자의 산수. **라이브러리 0** — 날짜 키가 전부 `YYYY-MM-DD` 문자열이라
@@ -111,5 +111,15 @@ describe('daysBetween', () => {
   it('서머타임이 있는 시간대에서도 정수다 — UTC 산수라 23·25시간이 낄 자리가 없다', () => {
     // 로컬 `Date` 산수로 짜면 이런 구간에서 0.958…이 나오고, 화면엔 「0일째」가 뜬다.
     expect(daysBetween('2026-03-07', '2026-03-09')).toBe(2);
+  });
+});
+
+describe('formatMd', () => {
+  it('연도를 빼고 「8월 1일」로 적는다 — 같은 줄이 길어지기만 한다', () => {
+    expect(formatMd('2026-08-01')).toBe('8월 1일');
+  });
+
+  it('두 자리 달·일에서도 0을 안 흘린다', () => {
+    expect(formatMd('2026-12-25')).toBe('12월 25일');
   });
 });
