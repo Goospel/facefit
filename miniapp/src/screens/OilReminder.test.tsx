@@ -99,6 +99,8 @@ describe('미예약 — 그날의 시작점', () => {
     expect(screen.getByText('기름종이 알림')).toBeTruthy();
     expect(sub().textContent).toContain('3시간 뒤에 알려드려요');
     expect(screen.getByRole('button', { name: ASK })).toBeTruthy();
+    // 알림 행과 **같은 부품**(`ui.pill`)이다 — 파란 채움 대신 알약이 이 카드의 행동 신호다.
+    expect(screen.getByTestId('oil-right').getAttribute('style')).toContain('999');
   });
 
   it('그만 받을 것이 없으니 취소 줄도 없다', () => {
@@ -114,6 +116,24 @@ describe('미예약 — 그날의 시작점', () => {
 
     expect(requestNotifyAgreement).toHaveBeenCalledTimes(1);
     expect(vi.mocked(requestNotifyAgreement).mock.calls[0][1]).toBe(OIL_TEMPLATE_CODE);
+  });
+
+  /*
+    ⚠️ **동의 시트가 뜨는 동안에도 이 버튼은 살아 있다.** 시트가 뜨기까지의 빈 시간에 연타하면
+    시트가 두 번 뜨고 예약도 두 번 나간다 — 서버는 키당 1행이라 결과는 같지만, 사용자는 시트를
+    두 번 닫아야 하고 레이트리밋(분당 6회)만 축낸다.
+  */
+  it('연타해도 한 번만 묻고 한 번만 예약한다', async () => {
+    setup();
+    const button = screen.getByRole('button', { name: ASK });
+
+    fireEvent.click(button);
+    fireEvent.click(button);
+
+    expect(requestNotifyAgreement).toHaveBeenCalledTimes(1);
+    answer('alreadyAgreed');
+    expect(await screen.findByText(/18:20/)).toBeTruthy();
+    expect(scheduleOilReminder).toHaveBeenCalledTimes(1);
   });
 });
 

@@ -154,6 +154,7 @@
 | 세션 한정 — 서버 실패/미지원 | 「지금은 예약할 수 없어요 · 잠시 뒤 다시 눌러 주세요」(amber) | 알약 「썼어요」 | — |
 | 세션 한정 — 동의 거절 | 「알림을 켜지 않았어요 · 눌러서 언제든 켤 수 있어요」(text-sub) | 알약 「썼어요」 | — |
 
+- **세션 문구(거절·실패)는 아래 줄 문구·색만 덮는다.** 오른쪽 알약/표식과 추가 행은 `oilState`를 따른다 — 승인 대기에서 실패해도 상태를 미예약처럼 보이게 하지 않기 위해서다(실패한 탭은 `nextAt`을 안 바꾸므로 실제 상태는 그대로다). 미예약에서 실패하면 위 표와 결과가 같다.
 - 제목 「기름종이 알림」. 카드 맨 아래 12px 상시 줄: 「알림 시각만 서버에 잠시 저장되고 알림이 가면 지워져요」(개인정보 고지 — §3-6).
 - 노출 조건은 **지원 여부**(`isNotifySupported() && isBackupSupported()`)다 — 동의 여부가 아니다(기존 규율). 둘 중 하나라도 거짓이면 카드 자체를 안 그린다.
 - `aria-label`: 행동 버튼 「기름종이 썼어요」 / 「기름종이 다음 알림 받기」 · 「기름종이 알림 그만 받기」. `role="switch"`는 **안 쓴다** — 켜짐의 반대가 「꺼짐」이 아니라 「오늘은 없음」이라 스위치 은유가 틀린다.
@@ -230,7 +231,7 @@
 |---|---|
 | `src/storage.ts` | `loadOilNextAt(): string \| null` · `saveOilNextAt(iso: string)`(빈 문자열 = 삭제) — `lastBackupAt`과 동형(손상값 → null) |
 | `src/notify.ts` | `requestNotifyAgreement(onDone, templateCode = TEMPLATE_CODE)` — 두 번째 인자 추가 · `OIL_TEMPLATE_CODE = 'facefit-oil-paper-reminder'` |
-| `src/logic/reminder.ts` (신설) | `oilState(nextAt, now, tz)` 순수 함수 → `'idle' \| 'scheduled' \| 'awaiting'`(날짜 리셋 포함) · `formatHm(iso)`(`sv-SE` 관용구) · `scheduleOilReminder(key, fetchFn)` → `{dueAt: string \| null} \| null`(null = 실패) · `cancelOilReminder(key, fetchFn)` → boolean. 무음 폴백 — `backup.ts`와 동형 |
+| `src/logic/reminder.ts` (신설) | `oilState(nextAt, now, tz = 'Asia/Seoul')` 순수 함수 → `'idle' \| 'scheduled' \| 'awaiting'`(날짜 리셋 포함 — **지난 예약에만 건다.** 미래는 자정을 넘겨도 `scheduled`) · `formatHm(iso, tz = 'Asia/Seoul')`(`sv-SE` 관용구) · `scheduleOilReminder(key, fetchFn)` → `{dueAt: string} \| null`(null = 실패. 야간 상한을 안 두므로 `dueAt: null` 갈래가 없다) · `cancelOilReminder(key, fetchFn)` → boolean. 무음 폴백 — `backup.ts`와 동형. ⚠️ `tz`가 인자인 것은 **테스트를 위해서다**(`todayKey`와 같은 사유 — 개발 기계가 KST라 옵션을 빼도 결과가 같아 「KST 기준」이 공허해진다) |
 | `src/logic/landing.ts` (신설) | `tabFromInitialUrl(url: string): 'home' \| null` 순수 + `readInitialTab()`(`Environment.initialURL` try — 토스 밖 TypeError 삼킴) |
 | `src/screens/OilReminder.tsx` (신설) | §3-5 카드. props 없음(저장소·SDK 직접 · 키는 `logic/backup.ts`의 `getBackupKey()` 재사용) — Home처럼 `useState`로 세션 결과 보관 |
 | `src/screens/Home.tsx` | 알림 행 아래 `<OilReminder />` 1줄(지원 조건은 컴포넌트 안에서) |

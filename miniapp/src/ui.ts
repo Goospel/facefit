@@ -87,6 +87,47 @@ export const ui: S = {
   },
 
   /**
+   * 「누르면 무언가 열린다」를 그림으로 말하는 캡슐. 알림 행·기름종이 카드의 오른쪽이다.
+   *
+   * ⚠️ **한 벌로 둔다.** 두 화면이 각자 사본을 들고 있었고, 그 사이에 「켜짐」 글자색이 이미
+   * 갈렸다(`--blue` / `--blue-dark`) — 같은 가족으로 읽혀야 하는 부품이 사본 둘로 조용히
+   * 어긋나는 자리다(`VERDICT_KO`·`FREQUENCY_KO`와 같은 규율).
+   *
+   * 테두리는 위 `chip`과 같은 이유로 **분리 속성**이다.
+   */
+  pill: {
+    flexShrink: 0,
+    padding: '8px 14px',
+    fontSize: 14,
+    fontWeight: 600,
+    whiteSpace: 'nowrap',
+    borderRadius: 999,
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: 'var(--blue)',
+    background: '#fff',
+    color: 'var(--blue)',
+  },
+
+  /**
+   * 이미 끝난 것의 표시. 알약이 아니라 **표식 + 글자**다 — 행동이 아니라 사실이라,
+   * 알약으로 두면 도로 「눌러야 할 것」으로 읽힌다.
+   *
+   * 색이 `--blue`가 아니라 `--blue-dark`인 것은 접근성이다 — `--blue`는 3.3:1로 보통 글자
+   * AA(4.5:1)에 못 미친다(`index.css` 주석의 계산).
+   */
+  doneMark: {
+    flexShrink: 0,
+    display: 'flex',
+    alignItems: 'center',
+    gap: 4,
+    fontSize: 14,
+    fontWeight: 600,
+    whiteSpace: 'nowrap',
+    color: 'var(--blue-dark)',
+  },
+
+  /**
    * 화면 밑에 붙어 따라오는 버튼 자리.
    *
    * 내용이 길어지면 확정 버튼이 화면 밖으로 밀려 **한 번 더 스크롤해야 보인다.**

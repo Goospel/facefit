@@ -3,8 +3,8 @@ import { cleanup, fireEvent, render, screen, within } from '@testing-library/rea
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { App } from './App';
-import { listPhotos } from './photoStore';
 import { readInitialTab } from './logic/landing';
+import { listPhotos } from './photoStore';
 import { loadProducts, loadNotes } from './storage';
 
 /**

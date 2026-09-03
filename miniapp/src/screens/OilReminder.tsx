@@ -1,9 +1,9 @@
-import { useState, type CSSProperties } from 'react';
+import { useRef, useState, type CSSProperties } from 'react';
 
 import { Icon } from '../components/Icon';
 import { getBackupKey, isBackupSupported } from '../logic/backup';
 import { cancelOilReminder, formatHm, oilState, scheduleOilReminder, type OilState } from '../logic/reminder';
-import { isNotifySupported, OIL_TEMPLATE_CODE, requestNotifyAgreement } from '../notify';
+import { isNotifySupported, OIL_TEMPLATE_CODE, requestNotifyAgreement, type NotifyResult } from '../notify';
 import { loadOilNextAt, saveOilNextAt } from '../storage';
 import { ui } from '../ui';
 
@@ -37,32 +37,7 @@ const STOP_LABEL: Partial<Record<OilState, string>> = { scheduled: '그만 받�
 
 const TONE_COLOR = { on: 'var(--blue-dark)', off: 'var(--text-sub)', warn: 'var(--amber)' } as const;
 
-/** 테두리는 분리 속성으로 쓴다(`ui.ts` 머리말). 알림 행의 알약과 **같은 부품**이다. */
-const pillStyle: CSSProperties = {
-  flexShrink: 0,
-  padding: '8px 14px',
-  fontSize: 14,
-  fontWeight: 600,
-  whiteSpace: 'nowrap',
-  borderRadius: 999,
-  borderWidth: 1,
-  borderStyle: 'solid',
-  borderColor: 'var(--blue)',
-  background: '#fff',
-  color: 'var(--blue)',
-};
-
-/** 예약된 뒤의 표시. 알약이 아니라 **표식 + 글자**다 — 행동이 아니라 사실이다. */
-const doneStyle: CSSProperties = {
-  flexShrink: 0,
-  display: 'flex',
-  alignItems: 'center',
-  gap: 4,
-  fontSize: 14,
-  fontWeight: 600,
-  whiteSpace: 'nowrap',
-  color: 'var(--blue-dark)',
-};
+/** 알약·표식은 알림 행과 **한 벌**을 쓴다(`ui.pill`·`ui.doneMark`) — 같은 카드 가족이다. */
 
 /** 카드 안에서 행 노릇만 한다 — 배경·테두리는 감싼 카드가 이미 그렸다. */
 const rowStyle: CSSProperties = {
@@ -88,6 +63,15 @@ export function OilReminder() {
    * 다시 누르면 되는 일이라, 저장해 두면 지난 실패가 오늘의 사실인 척한다.
    */
   const [session, setSession] = useState<'rejected' | 'failed' | null>(null);
+  /**
+   * 진행 중인 「썼어요」가 있는가.
+   *
+   * ⚠️ 동의 시트가 뜨는 동안에도 아래 버튼은 살아 있다 — 연타하면 **동의 시트가 두 번 뜨고
+   * 예약이 두 번 나간다**(서버는 키당 1행이라 덮어써 마지막 것만 남지만, 사용자는 시트를
+   * 두 번 닫아야 하고 레이트리밋도 그만큼 먹는다). `state`가 아니라 `ref`인 것은 이 값이
+   * 화면에 그릴 것이 없어서다 — state로 두면 의미 없는 리렌더만 는다.
+   */
+  const pending = useRef(false);
 
   /**
    * ⚠️ 숨기는 조건은 **동의 여부가 아니라 지원 여부**다(기존 규율). 둘 다 필요하다 —
@@ -116,13 +100,22 @@ export function OilReminder() {
    * 「썼어요」. **매번 동의를 거친다**(멱등 — `alreadyAgreed`면 시트 없이 즉시 통과).
    * 앱은 동의 사본을 안 둔다 — 단일 출처는 토스이고, 사본을 두면 철회한 순간 거짓말이 된다.
    */
+  async function settle(result: NotifyResult) {
+    // 거절이면 서버를 아예 안 부른다 — 안 켠 사람의 시각을 서버에 올릴 이유가 없다.
+    if (result === 'agreementRejected') return setSession('rejected');
+    // 못 물어본 것과 서버 실패는 사용자가 할 일이 같다(다시 누르기) — 같은 말을 한다.
+    if (result === 'unavailable') return setSession('failed');
+    await schedule();
+  }
+
   function tap() {
+    // 시트가 떠 있는 동안의 연타는 무시한다 — 시트가 두 번 뜨고 예약이 두 번 나간다.
+    if (pending.current) return;
+    pending.current = true;
     requestNotifyAgreement((result) => {
-      // 거절이면 서버를 아예 안 부른다 — 안 켠 사람의 시각을 서버에 올릴 이유가 없다.
-      if (result === 'agreementRejected') return setSession('rejected');
-      // 못 물어본 것과 서버 실패는 사용자가 할 일이 같다(다시 누르기) — 같은 말을 한다.
-      if (result === 'unavailable') return setSession('failed');
-      void schedule();
+      void settle(result).finally(() => {
+        pending.current = false;
+      });
     }, OIL_TEMPLATE_CODE);
   }
 
@@ -163,7 +156,7 @@ export function OilReminder() {
         </span>
       </span>
       {/* 장식이라 `aria-hidden` — 이름은 버튼의 `aria-label`이다(알림 행과 같은 규율). */}
-      <span aria-hidden data-testid="oil-right" style={state === 'scheduled' ? doneStyle : pillStyle}>
+      <span aria-hidden data-testid="oil-right" style={state === 'scheduled' ? ui.doneMark : ui.pill}>
         {state === 'scheduled' && <Icon name="check" size={16} />}
         {RIGHT[state]}
       </span>
