@@ -1,4 +1,4 @@
-import { useRef, useState, type CSSProperties } from 'react';
+import { useEffect, useRef, useState, type CSSProperties } from 'react';
 
 import { Icon } from '../components/Icon';
 import { getBackupKey, isBackupSupported } from '../logic/backup';
@@ -27,10 +27,17 @@ const RIGHT: Record<OilState, string> = { idle: '썼어요', scheduled: '예약�
  * 행동 버튼의 접근성 이름. **한 마디로 고정한다** — 본문을 이어 붙이면 스크린리더가 설명까지
  * 버튼 이름으로 읽는다(알림 행과 같은 규율).
  *
+ * ⚠️ 셋이 **서로 다른 말**이라야 한다. 「처음 켠다」·「또 썼다」·「다음도 받는다」는 사용자가
+ * 하는 일이 다르고, 같은 이름을 돌려쓰면 스크린리더만 쓰는 사람에게 상태가 안 보인다.
+ *
  * ⚠️ `role="switch"`는 **안 쓴다**(설계 §3-5) — 켜짐의 반대가 「꺼짐」이 아니라 「오늘은 없음」이라
  * 스위치 은유가 틀리다. 「꺼짐」이라 읽히면 내일도 안 온다는 뜻이 되는데, 실제로는 하루짜리 상태다.
  */
-const ACTION_LABEL = { idle: '기름종이 썼어요', awaiting: '기름종이 다음 알림 받기' } as const;
+const ACTION_LABEL: Record<OilState, string> = {
+  idle: '기름종이 썼어요',
+  scheduled: '기름종이 또 썼어요',
+  awaiting: '기름종이 다음 알림 받기',
+};
 
 /** 그만두는 줄. 예약 전이면 「그만 받기」, 알림이 간 뒤면 「오늘은 그만」 — 남은 것이 다르다. */
 const STOP_LABEL: Partial<Record<OilState, string>> = { scheduled: '그만 받기', awaiting: '오늘은 그만' };
@@ -72,6 +79,35 @@ export function OilReminder() {
    * 화면에 그릴 것이 없어서다 — state로 두면 의미 없는 리렌더만 는다.
    */
   const pending = useRef(false);
+  /**
+   * **시각을 다시 보게 만드는 계기다 — 값이 아니다.** 상태는 그리는 순간의 `new Date()`로
+   * 정해지므로, 이 값이 바뀌었다는 사실만으로 충분하다(값으로 들면 다른 이유로 리렌더될 때
+   * 그 값만 낡아, 오히려 지금 아닌 시각으로 상태를 판정한다).
+   */
+  const [, recheck] = useState(0);
+
+  /**
+   * ⚠️⚠️ **시간이 흐르는 것은 리렌더를 일으키지 않는다**(T-021 · 2026-09-04 실기기 보고).
+   * 이 배선이 없으면 알림이 실제로 도착해도 카드는 마운트 당시의 「예약됨」에 **고착**하고,
+   * 그 상태에는 「다음 알림 받기」가 없어 **다음 알림을 켤 방법이 사라진다.**
+   *
+   * 계기가 **둘**인 이유: 타이머는 앱을 열어 둔 채 시각을 넘길 때를, 복귀 감지는 백그라운드에서
+   * 타이머가 스로틀될 때를 잡는다 — 어느 하나로는 구멍이 남는다(둘 다 그저 「다시 세라」는
+   * 신호라 두 번 울려도 해가 없다).
+   *
+   * 1초를 더해 재는 것은 경계에서 되레 `scheduled`로 읽혀 한 번 더 기다리는 일을 막는다.
+   */
+  useEffect(() => {
+    const wake = () => recheck((n) => n + 1);
+    document.addEventListener('visibilitychange', wake);
+    const left = nextAt ? new Date(nextAt).getTime() - Date.now() : NaN;
+    // NaN(미예약·손상값)이면 비교가 거짓이라 타이머를 안 건다 — 기다릴 시각이 없다.
+    const timer = left > 0 ? setTimeout(wake, left + 1000) : undefined;
+    return () => {
+      document.removeEventListener('visibilitychange', wake);
+      clearTimeout(timer);
+    };
+  }, [nextAt]);
 
   /**
    * ⚠️ 숨기는 조건은 **동의 여부가 아니라 지원 여부**다(기존 규율). 둘 다 필요하다 —
@@ -139,7 +175,7 @@ export function OilReminder() {
       : session === 'failed'
         ? (['지금은 예약할 수 없어요 · 잠시 뒤 다시 눌러 주세요', 'warn'] as const)
         : state === 'scheduled'
-          ? ([`다음 알림 ${formatHm(nextAt!)} · 그때 다시 쓸지 정해요`, 'on'] as const)
+          ? ([`다음 알림 ${formatHm(nextAt!)} · 또 썼으면 눌러요`, 'on'] as const)
           : state === 'awaiting'
             ? (['알림을 보냈어요 · 다음도 받을까요', 'on'] as const)
             : (['쓰고 나서 누르면 3시간 뒤에 알려드려요', 'off'] as const);
@@ -166,16 +202,18 @@ export function OilReminder() {
   return (
     <div style={{ ...ui.card, marginTop: 8 }}>
       {/*
-        예약된 동안에는 **누를 것이 없다** — 오른쪽이 행동이 아니라 사실이고, 되돌리는 길은
-        아래 「그만 받기」 하나다. 버튼으로 두면 「예약됨」을 또 누르라는 뜻으로 읽힌다.
+        ⚠️ **어느 상태에서도 누를 수 있다**(사용자 결정 2026-09-04). 예약된 동안에는 눌러도
+        소용없게 두었었는데 — 오른쪽이 사실이지 행동이 아니라는 이유였다 — 기름종이는 하루에
+        여러 번 쓰는 물건이라 3시간을 다 기다리지 않고 또 쓰는 것이 정상이다. 그때 누를 표면이
+        없으면 「그만 받기 → 다시 누르기」 2단계를 거쳐야 다음 알림을 옮길 수 있었다.
+
+        서버는 원래 키당 한 줄을 **덮어쓴다**(`ReminderRepository.upsert`) — 막고 있던 것은
+        화면뿐이었다. 「또 누르라」로 읽히는 문제는 오른쪽이 아니라 **왼쪽 설명**이 푼다
+        (「또 썼으면 눌러요」) — 오른쪽은 체크 표식 그대로 사실만 말한다.
       */}
-      {state === 'scheduled' ? (
-        <div style={rowStyle}>{body}</div>
-      ) : (
-        <button aria-label={ACTION_LABEL[state]} style={rowStyle} onClick={tap}>
-          {body}
-        </button>
-      )}
+      <button aria-label={ACTION_LABEL[state]} style={rowStyle} onClick={tap}>
+        {body}
+      </button>
 
       {STOP_LABEL[state] && (
         <button aria-label="기름종이 알림 그만 받기" style={{ ...ui.ghost, marginTop: 4, marginLeft: -12 }} onClick={stop}>

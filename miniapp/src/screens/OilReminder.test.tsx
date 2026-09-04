@@ -47,9 +47,12 @@ afterEach(() => {
 const NOW = '2026-09-03T06:20:00Z';
 const DUE = '2026-09-03T09:20:00Z'; // 18:20 KST
 const PAST = '2026-09-03T03:20:00Z'; // 12:20 KST — 오늘, 이미 지남
+const LATER = '2026-09-03T12:20:00Z'; // 21:20 KST — 예약을 뒤로 옮겼을 때 받는 값
 const KEY = 'anon-hash-abcdef0123456789';
 
 const ASK = '기름종이 썼어요';
+/** 예약이 걸려 있는 동안의 「또 썼어요」. 미예약의 {@link ASK}와 **다른 이름**이라야 둘을 가려 잰다. */
+const AGAIN_NOW = '기름종이 또 썼어요';
 const AGAIN = '기름종이 다음 알림 받기';
 const STOP = '기름종이 알림 그만 받기';
 
@@ -150,13 +153,37 @@ describe('예약 — 동의 확인 뒤 서버가 시각을 정한다', () => {
     expect(localStorage.getItem('facefit.oilNextAt')).toBe(DUE);
   });
 
-  it('예약된 뒤의 오른쪽은 알약이 아니라 체크 표식이다 — 예약된 것을 또 누르라고 하지 않는다', () => {
+  /*
+    오른쪽은 **사실**을 말한다(예약됐다) — 그래서 알약이 아니라 체크 표식이다. 누를 수 있다는
+    것은 왼쪽 설명이 말한다(「또 썼으면 눌러요」). 알약으로 바꾸면 「아직 안 됐으니 누르라」로
+    읽혀, 이미 잡힌 예약이 안 잡힌 것처럼 보인다.
+  */
+  it('예약된 뒤의 오른쪽은 알약이 아니라 체크 표식이다', () => {
     setup(DUE);
 
     const right = screen.getByTestId('oil-right');
     expect(right.textContent).toContain('예약됨');
     expect(right.querySelector('svg')).toBeTruthy();
+    // 미예약의 이름을 쓰지 않는다 — 「처음 켜기」와 「또 썼다」는 다른 말이다.
     expect(screen.queryByRole('button', { name: ASK })).toBeNull();
+  });
+
+  /*
+    ⚠️ **예약이 걸린 동안에도 다시 누를 수 있어야 한다**(사용자 결정 2026-09-04). 기름종이는
+    하루에 여러 번 쓰는 물건이라 3시간을 다 기다리지 않고 또 쓰는 것이 정상인데, 그때 누를
+    표면이 없으면 「그만 받기 → 다시 누르기」 2단계를 거쳐야 다음 알림을 옮길 수 있었다.
+
+    서버는 원래 키당 한 줄을 **덮어쓴다**(`ReminderRepository.upsert`) — 막고 있던 것은 화면뿐이다.
+  */
+  it('예약된 동안 또 눌러도 시각을 새로 받는다 — 3시간을 다 기다리지 않아도 된다', async () => {
+    vi.mocked(scheduleOilReminder).mockResolvedValue({ dueAt: LATER });
+    setup(DUE);
+
+    fireEvent.click(screen.getByRole('button', { name: AGAIN_NOW }));
+    answer('alreadyAgreed');
+
+    expect(await screen.findByText(/21:20/)).toBeTruthy();
+    expect(localStorage.getItem('facefit.oilNextAt')).toBe(LATER);
   });
 
   /*
@@ -242,6 +269,61 @@ describe('승인 대기 — 알림이 간 뒤', () => {
 
     expect(screen.getByRole('button', { name: ASK })).toBeTruthy();
     expect(screen.queryByRole('button', { name: AGAIN })).toBeNull();
+  });
+});
+
+/*
+  ⚠️⚠️ **마운트 순간에 얼지 않는다**(2026-09-04 실기기 보고 · T-021).
+
+  상태는 `oilState(nextAt, new Date())` 한 줄로 정해지는데, 시간이 흐르는 것은 리렌더를 일으키지
+  않는다 — 그래서 알림이 실제로 도착해도 카드는 마운트 당시의 「예약됨」에 **고착**했다. 그
+  상태에서는 「다음 알림 받기」가 안 뜨니 사용자에게는 **다음 알림을 켤 방법이 아예 없었다.**
+
+  「처음엔 되고 두 번째부터 안 되는」 정체가 이것이다: 첫 알림은 대개 앱이 죽은 뒤에 와서
+  콜드 스타트가 카드를 새로 마운트해 주지만(`readInitialTab`이 오늘 탭으로 보낸다), 앱이 살아
+  있는 채로 복귀하면 `initialURL`도 안 실리고(`landing.ts`) 탭도 그대로라 리마운트가 없다.
+
+  계기를 **둘** 두는 이유: 타이머는 앱을 열어 둔 채 시각을 넘길 때, 복귀 감지는 백그라운드에서
+  타이머가 스로틀될 때를 각각 잡는다 — 어느 하나로는 구멍이 남는다.
+*/
+describe('시각이 흐르면 상태도 흐른다', () => {
+  it('예약 시각이 되면 스스로 승인 대기로 넘어간다 — 앱을 열어 둔 채여도', () => {
+    // ⚠️ 이 블록만 타이머까지 가짜다(기본 설정은 `Date`만) — 잴 것이 타이머 그 자체다.
+    vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'] });
+    vi.setSystemTime(new Date(NOW));
+    setup(DUE);
+    expect(screen.getByTestId('oil-right').textContent).toContain('예약됨');
+
+    act(() => {
+      vi.setSystemTime(new Date('2026-09-03T09:20:01Z'));
+      vi.advanceTimersByTime(3 * 60 * 60 * 1000 + 2000);
+    });
+
+    expect(screen.getByRole('button', { name: AGAIN })).toBeTruthy();
+    expect(sub().textContent).toContain('알림을 보냈어요');
+  });
+
+  it('앱으로 돌아오면 다시 센다 — 백그라운드에 있는 동안 시각이 지났을 수 있다', () => {
+    setup(DUE);
+
+    act(() => {
+      vi.setSystemTime(new Date('2026-09-03T09:21:00Z'));
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+
+    expect(screen.getByRole('button', { name: AGAIN })).toBeTruthy();
+    // 지나간 시각을 「다음 알림」이라 계속 말하고 있으면 그 자체가 거짓말이다.
+    expect(sub().textContent).not.toContain('18:20');
+  });
+
+  /* 예약을 지운 뒤에도 옛 시각의 타이머가 살아 있으면, 엉뚱한 때에 화면이 한 번 흔들린다. */
+  it('카드가 사라져도 리스너를 남기지 않는다', () => {
+    const off = vi.spyOn(document, 'removeEventListener');
+    const { unmount } = setup(DUE);
+
+    unmount();
+
+    expect(off).toHaveBeenCalledWith('visibilitychange', expect.any(Function));
   });
 });
 
