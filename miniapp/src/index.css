@@ -45,6 +45,14 @@ body {
   color: var(--text);
   font-family: system-ui, -apple-system, 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif;
   line-height: 1.5;
+  /* 한글은 **음절 사이가 전부 줄바꿈 자리**라(UAX #14의 H2·H3), 기본값이면 어절 한가운데서
+     쪼개진다 — 「알려드려요」가 「알려드 / 려요」로 꺾인다. 폭이 좁을수록 자주 걸리는데,
+     오른쪽에 알약·표식을 둔 카드 행(알림·기름종이)은 왼쪽 문구가 150~230px밖에 안 되어
+     늘 그 조건이다. `keep-all`은 공백에서만 꺾어 어절을 통째로 넘긴다.
+     `break-word`를 같이 두는 것은 한 어절이 폭보다 길 때의 안전장치다(긴 제품명·URL) —
+     `keep-all`만 두면 그런 값이 카드 밖으로 넘친다. */
+  word-break: keep-all;
+  overflow-wrap: break-word;
   -webkit-tap-highlight-color: transparent;
   /* 셔터·달력 날짜처럼 같은 자리를 빠르게 연타하면 웹뷰가 더블탭 확대로 오인해 화면이 잘린다.
      스크롤·탭은 그대로 둔 채 그 확대만 끊는다. 뷰포트 메타를 무시하는 웹뷰까지 커버하는
