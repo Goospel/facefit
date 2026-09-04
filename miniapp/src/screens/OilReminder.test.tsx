@@ -12,6 +12,8 @@ import { OilReminder } from './OilReminder';
  *
  * 여기서 잠그는 것:
  * - **지원 여부로만 숨긴다** — 동의 여부가 아니다(기존 규율). 못 쓰는 기기에 죽은 버튼을 남기지 않는다.
+ * - **한 번의 탭이 두 가지 일을 하지 않는다**(2026-09-04 개편) — 1단계 「썼어요」는 화면만 옮기고,
+ *   서버도 동의 시트도 **2단계에서만** 건드린다.
  * - **서버가 예약을 확인해야 「예약됨」이라 말한다** — 실패했는데 예약됨으로 그리면 거짓말이다.
  * - **동의를 거절하면 서버를 안 부른다** — 안 켠 사람의 시각을 서버에 올릴 이유가 없다.
  * - **채운 파란 버튼이 0개다** — 오늘 탭의 파란 자리는 「오늘 얼굴 찍기」 하나뿐이고,
@@ -50,11 +52,20 @@ const PAST = '2026-09-03T03:20:00Z'; // 12:20 KST — 오늘, 이미 지남
 const LATER = '2026-09-03T12:20:00Z'; // 21:20 KST — 예약을 뒤로 옮겼을 때 받는 값
 const KEY = 'anon-hash-abcdef0123456789';
 
-const ASK = '기름종이 썼어요';
-/** 예약이 걸려 있는 동안의 「또 썼어요」. 미예약의 {@link ASK}와 **다른 이름**이라야 둘을 가려 잰다. */
-const AGAIN_NOW = '기름종이 또 썼어요';
-const AGAIN = '기름종이 다음 알림 받기';
+/**
+ * 버튼 이름 넷이 **서로 다르다**. 사용자가 하는 일이 넷 다 다르기 때문이고, 같은 이름을
+ * 돌려쓰면 스크린리더만 쓰는 사람에게 지금이 어느 칸인지가 안 보인다.
+ */
+const ASK = '기름종이 썼어요'; // 1단계 — 미예약·알림 뒤
+const AGAIN_NOW = '기름종이 또 썼어요'; // 1단계 — 예약이 이미 걸려 있을 때
+const CONFIRM = '3시간 뒤 알림 받기'; // 2단계
+const SKIP = '알림 없이 넘어가기'; // 2단계에서 빠져나가는 줄
 const STOP = '기름종이 알림 그만 받기';
+
+/** 짧은 움직임(예약 확인)은 Web Animations API로 준다 — jsdom에는 없어 심어 준다. */
+const animate = vi.fn();
+/** 움직임을 줄이는 설정. 기본은 「줄이지 않음」이고, 필요한 테스트가 뒤집는다. */
+let reduceMotion = false;
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -67,11 +78,24 @@ beforeEach(() => {
   vi.mocked(getBackupKey).mockResolvedValue(KEY);
   vi.mocked(scheduleOilReminder).mockResolvedValue({ dueAt: DUE });
   vi.mocked(cancelOilReminder).mockResolvedValue(true);
+  reduceMotion = false;
+  Element.prototype.animate = animate as never;
+  window.matchMedia = ((q: string) => ({ matches: reduceMotion && q.includes('reduced-motion') })) as never;
 });
 
 function setup(nextAt?: string) {
   if (nextAt) localStorage.setItem('facefit.oilNextAt', nextAt);
   return render(<OilReminder />);
+}
+
+/** 1단계. **화면만 옮긴다** — 서버도 동의 시트도 여기서는 안 건드린다. */
+function tapUsed(label: string = ASK) {
+  fireEvent.click(screen.getByRole('button', { name: label }));
+}
+
+/** 2단계. 여기서 처음 동의를 묻는다. */
+function tapConfirm() {
+  fireEvent.click(screen.getByRole('button', { name: CONFIRM }));
 }
 
 /** 눌러서 토스가 준 결과를 흘려 넣는다 — Home의 알림 행과 같은 관용구다. */
@@ -95,15 +119,12 @@ describe('노출 조건 — 지원 여부로만 가른다', () => {
   });
 });
 
-describe('미예약 — 그날의 시작점', () => {
+describe('1단계 「썼어요」 — 서버도 동의도 건드리지 않는다', () => {
   it('무엇을 해 주는지 말하고 누를 알약을 준다', () => {
     setup();
 
-    expect(screen.getByText('기름종이 알림')).toBeTruthy();
-    expect(sub().textContent).toContain('3시간 뒤에 알려드려요');
+    expect(sub().textContent).toContain('쓰고 나서');
     expect(screen.getByRole('button', { name: ASK })).toBeTruthy();
-    // 알림 행과 **같은 부품**(`ui.pill`)이다 — 파란 채움 대신 알약이 이 카드의 행동 신호다.
-    expect(screen.getByTestId('oil-right').getAttribute('style')).toContain('999');
   });
 
   it('그만 받을 것이 없으니 취소 줄도 없다', () => {
@@ -112,39 +133,73 @@ describe('미예약 — 그날의 시작점', () => {
     expect(screen.queryByRole('button', { name: STOP })).toBeNull();
   });
 
-  it('누르면 기름종이 동의문으로 동의 화면을 연다 — 아침 알림과 다른 동의문이다', () => {
+  /*
+    ⚠️⚠️ **이 테스트가 개편의 전부다**(사용자 지적 2026-09-04). 원래 알약 하나가
+    「썼어요 · 다음 알림」이라 **탭 한 번이 두 가지 일**을 했다 — 기름종이를 썼다고 표시하는 것과
+    알림을 받겠다는 것. 그래서 사용을 기록하려던 사람에게 **동의 시트부터** 들이밀었고,
+    무슨 일이 일어났는지도 흐렸다.
+
+    이제 1단계는 **화면만 옮긴다.** 동의는 실제로 알림을 요청하는 2단계에서만 묻는다.
+  */
+  it('누르는 것만으로는 동의도 예약도 일어나지 않는다 — 다음 칸을 열 뿐이다', () => {
     setup();
 
-    fireEvent.click(screen.getByRole('button', { name: ASK }));
+    tapUsed();
 
-    expect(requestNotifyAgreement).toHaveBeenCalledTimes(1);
-    expect(vi.mocked(requestNotifyAgreement).mock.calls[0][1]).toBe(OIL_TEMPLATE_CODE);
+    expect(requestNotifyAgreement).not.toHaveBeenCalled();
+    expect(scheduleOilReminder).not.toHaveBeenCalled();
+    expect(localStorage.getItem('facefit.oilNextAt')).toBeNull();
+    // 대신 2단계가 열렸다 — 여기서 비로소 3시간을 말한다.
+    expect(sub().textContent).toContain('3시간 뒤에');
+    expect(screen.getByRole('button', { name: CONFIRM })).toBeTruthy();
   });
 
   /*
-    ⚠️ **동의 시트가 뜨는 동안에도 이 버튼은 살아 있다.** 시트가 뜨기까지의 빈 시간에 연타하면
-    시트가 두 번 뜨고 예약도 두 번 나간다 — 서버는 키당 1행이라 결과는 같지만, 사용자는 시트를
-    두 번 닫아야 하고 레이트리밋(분당 6회)만 축낸다.
+    ⚠️ 어느 칸에서 시작하든 **같은 2단계로 모인다.** 예약이 걸린 동안에도, 알림이 간 뒤에도
+    「썼다」는 사실을 말하는 방법이 하나여야 규칙이 하나가 된다(사용자 결정 2026-09-04 —
+    「예약 중이면 1탭으로 바로 재예약」을 일부러 안 골랐다).
   */
-  it('연타해도 한 번만 묻고 한 번만 예약한다', async () => {
-    setup();
-    const button = screen.getByRole('button', { name: ASK });
+  it.each([
+    ['예약된 동안', DUE, AGAIN_NOW],
+    ['알림이 간 뒤', PAST, ASK],
+  ])('%s에도 같은 1단계로 들어간다', (_s, seed, label) => {
+    setup(seed);
 
-    fireEvent.click(button);
-    fireEvent.click(button);
+    tapUsed(label);
 
-    expect(requestNotifyAgreement).toHaveBeenCalledTimes(1);
-    answer('alreadyAgreed');
-    expect(await screen.findByText(/18:20/)).toBeTruthy();
-    expect(scheduleOilReminder).toHaveBeenCalledTimes(1);
+    expect(requestNotifyAgreement).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: CONFIRM })).toBeTruthy();
   });
 });
 
-describe('예약 — 동의 확인 뒤 서버가 시각을 정한다', () => {
+describe('2단계 「알림 받기」 — 여기서 처음 동의를 묻는다', () => {
+  it('기름종이 동의문으로 동의 화면을 연다 — 아침 알림과 다른 동의문이다', () => {
+    setup();
+
+    tapUsed();
+    tapConfirm();
+
+    expect(requestNotifyAgreement).toHaveBeenCalledWith(expect.any(Function), OIL_TEMPLATE_CODE);
+  });
+
+  it('연타해도 한 번만 묻고 한 번만 예약한다', async () => {
+    setup();
+
+    tapUsed();
+    tapConfirm();
+    tapConfirm();
+    answer('alreadyAgreed');
+    await act(async () => {});
+
+    expect(requestNotifyAgreement).toHaveBeenCalledTimes(1);
+    expect(scheduleOilReminder).toHaveBeenCalledTimes(1);
+  });
+
   it.each(['newAgreement', 'alreadyAgreed'] as const)('%s면 서버에 예약하고 받은 시각을 그린다', async (result) => {
     setup();
 
-    fireEvent.click(screen.getByRole('button', { name: ASK }));
+    tapUsed();
+    tapConfirm();
     answer(result);
 
     expect(await screen.findByText(/18:20/)).toBeTruthy();
@@ -155,8 +210,8 @@ describe('예약 — 동의 확인 뒤 서버가 시각을 정한다', () => {
 
   /*
     오른쪽은 **사실**을 말한다(예약됐다) — 그래서 알약이 아니라 체크 표식이다. 누를 수 있다는
-    것은 왼쪽 설명이 말한다(「또 썼으면 눌러요」). 알약으로 바꾸면 「아직 안 됐으니 누르라」로
-    읽혀, 이미 잡힌 예약이 안 잡힌 것처럼 보인다.
+    것은 왼쪽 설명이 말한다. 알약으로 바꾸면 「아직 안 됐으니 누르라」로 읽혀, 이미 잡힌 예약이
+    안 잡힌 것처럼 보인다.
   */
   it('예약된 뒤의 오른쪽은 알약이 아니라 체크 표식이다', () => {
     setup(DUE);
@@ -164,26 +219,22 @@ describe('예약 — 동의 확인 뒤 서버가 시각을 정한다', () => {
     const right = screen.getByTestId('oil-right');
     expect(right.textContent).toContain('예약됨');
     expect(right.querySelector('svg')).toBeTruthy();
-    // 미예약의 이름을 쓰지 않는다 — 「처음 켜기」와 「또 썼다」는 다른 말이다.
-    expect(screen.queryByRole('button', { name: ASK })).toBeNull();
   });
 
   /*
-    ⚠️ **예약이 걸린 동안에도 다시 누를 수 있어야 한다**(사용자 결정 2026-09-04). 기름종이는
-    하루에 여러 번 쓰는 물건이라 3시간을 다 기다리지 않고 또 쓰는 것이 정상인데, 그때 누를
-    표면이 없으면 「그만 받기 → 다시 누르기」 2단계를 거쳐야 다음 알림을 옮길 수 있었다.
-
-    서버는 원래 키당 한 줄을 **덮어쓴다**(`ReminderRepository.upsert`) — 막고 있던 것은 화면뿐이다.
+    ⚠️ **빠져나갈 길이 같은 자리에 있어야 한다.** 2단계는 질문이므로 「아니오」가 필요하고,
+    아니라고 답한 결과는 **아무것도 남지 않는 것**이다 — 서버도 저장소도 안 건드린다.
   */
-  it('예약된 동안 또 눌러도 시각을 새로 받는다 — 3시간을 다 기다리지 않아도 된다', async () => {
-    vi.mocked(scheduleOilReminder).mockResolvedValue({ dueAt: LATER });
-    setup(DUE);
+  it('「괜찮아요」로 빠져나가면 아무것도 남지 않는다', () => {
+    setup();
 
-    fireEvent.click(screen.getByRole('button', { name: AGAIN_NOW }));
-    answer('alreadyAgreed');
+    tapUsed();
+    fireEvent.click(screen.getByRole('button', { name: SKIP }));
 
-    expect(await screen.findByText(/21:20/)).toBeTruthy();
-    expect(localStorage.getItem('facefit.oilNextAt')).toBe(LATER);
+    expect(requestNotifyAgreement).not.toHaveBeenCalled();
+    expect(scheduleOilReminder).not.toHaveBeenCalled();
+    expect(localStorage.getItem('facefit.oilNextAt')).toBeNull();
+    expect(screen.getByRole('button', { name: ASK })).toBeTruthy();
   });
 
   /*
@@ -194,37 +245,42 @@ describe('예약 — 동의 확인 뒤 서버가 시각을 정한다', () => {
   it('동의를 거절하면 서버를 아예 안 부른다', async () => {
     setup();
 
-    fireEvent.click(screen.getByRole('button', { name: ASK }));
+    tapUsed();
+    tapConfirm();
     answer('agreementRejected');
 
     expect(await screen.findByText(/켜지 않았어요/)).toBeTruthy();
     expect(scheduleOilReminder).not.toHaveBeenCalled();
     expect(localStorage.getItem('facefit.oilNextAt')).toBeNull();
     // 다시 누를 수 있게 둔다 — 마음이 바뀌는 것이 정상이다.
-    expect(screen.getByRole('button', { name: ASK })).toBeTruthy();
+    expect(screen.getByRole('button', { name: CONFIRM })).toBeTruthy();
   });
 
   /*
     ⚠️ **서버가 실패하면 저장하지 않는다**(백업의 `dirty` 규율과 같은 결). 예약이 안 됐는데
-    「다음 알림 18:20」이라 그리면, 사용자는 오지 않을 알림을 기다린다.
+    「18:20에 알려드릴게요」라 그리면, 사용자는 오지 않을 알림을 기다린다.
   */
   it('서버가 실패하면 예약됨으로 그리지 않고 다시 눌러 달라고 한다', async () => {
     vi.mocked(scheduleOilReminder).mockResolvedValue(null);
     setup();
 
-    fireEvent.click(screen.getByRole('button', { name: ASK }));
+    tapUsed();
+    tapConfirm();
     answer('alreadyAgreed');
 
     expect(await screen.findByText(/예약할 수 없어요/)).toBeTruthy();
     expect(sub().getAttribute('style')).toContain('--amber');
     expect(localStorage.getItem('facefit.oilNextAt')).toBeNull();
+    // 실패한 자리에 그대로 둔다 — 다시 누르는 것이 곧 재시도다.
+    expect(screen.getByRole('button', { name: CONFIRM })).toBeTruthy();
   });
 
   it('익명 키를 못 얻어도 같은 말을 한다 — 못 예약한 것은 매한가지다', async () => {
     vi.mocked(getBackupKey).mockResolvedValue(null);
     setup();
 
-    fireEvent.click(screen.getByRole('button', { name: ASK }));
+    tapUsed();
+    tapConfirm();
     answer('alreadyAgreed');
 
     expect(await screen.findByText(/예약할 수 없어요/)).toBeTruthy();
@@ -234,7 +290,8 @@ describe('예약 — 동의 확인 뒤 서버가 시각을 정한다', () => {
   it('동의 화면을 못 열어도 거절과 다르게 말한다 — 못 물어본 것을 거절로 적지 않는다', async () => {
     setup();
 
-    fireEvent.click(screen.getByRole('button', { name: ASK }));
+    tapUsed();
+    tapConfirm();
     answer('unavailable');
 
     expect(await screen.findByText(/예약할 수 없어요/)).toBeTruthy();
@@ -242,18 +299,40 @@ describe('예약 — 동의 확인 뒤 서버가 시각을 정한다', () => {
   });
 });
 
+/*
+  ⚠️ **예약이 걸린 동안에도 다시 걸 수 있어야 한다**(사용자 결정 2026-09-04). 기름종이는 하루에
+  여러 번 쓰는 물건이라 3시간을 다 기다리지 않고 또 쓰는 것이 정상인데, 그때 누를 표면이 없으면
+  「그만 받기 → 다시 누르기」를 거쳐야 다음 알림을 옮길 수 있었다.
+
+  서버는 원래 키당 한 줄을 **덮어쓴다**(`ReminderRepository.upsert`) — 막고 있던 것은 화면뿐이다.
+*/
+describe('예약이 걸린 동안 — 3시간을 다 기다리지 않아도 된다', () => {
+  it('또 눌러 2단계를 거치면 시각을 새로 받는다', async () => {
+    vi.mocked(scheduleOilReminder).mockResolvedValue({ dueAt: LATER });
+    setup(DUE);
+
+    tapUsed(AGAIN_NOW);
+    tapConfirm();
+    answer('alreadyAgreed');
+
+    expect(await screen.findByText(/21:20/)).toBeTruthy();
+    expect(localStorage.getItem('facefit.oilNextAt')).toBe(LATER);
+  });
+});
+
 describe('승인 대기 — 알림이 간 뒤', () => {
-  it('알림을 보냈다고 말하고 다음을 받을지 묻는다', () => {
+  it('알림을 보냈다고 말하고 또 썼는지 묻는다', () => {
     setup(PAST);
 
     expect(sub().textContent).toContain('알림을 보냈어요');
-    expect(screen.getByRole('button', { name: AGAIN })).toBeTruthy();
+    expect(screen.getByRole('button', { name: ASK })).toBeTruthy();
   });
 
-  it('승인하면 한 번 더 예약한다 — 게이트가 한 바퀴 돈다', async () => {
+  it('한 바퀴를 돌아 다시 예약된다 — 게이트가 매번 같은 순서로 돈다', async () => {
     setup(PAST);
 
-    fireEvent.click(screen.getByRole('button', { name: AGAIN }));
+    tapUsed();
+    tapConfirm();
     answer('alreadyAgreed');
 
     expect(await screen.findByText(/18:20/)).toBeTruthy();
@@ -262,13 +341,51 @@ describe('승인 대기 — 알림이 간 뒤', () => {
 
   /*
     ⚠️ **어제 것은 승인 대기가 아니다**(설계 §3-2의 날짜 리셋). 어젯밤 알림에 답하지 않은
-    사람에게 아침까지 「다음도 받을까요」를 들이밀면 게이트가 무기한 열려 있는 것과 같다.
+    사람에게 아침까지 「또 썼나요」를 들이밀면 게이트가 무기한 열려 있는 것과 같다.
   */
   it('어제 예약분이면 아무 일 없었던 것처럼 미예약으로 돌아간다', () => {
     setup('2026-09-02T14:50:00Z'); // 2026-09-02 23:50 KST
 
+    expect(sub().textContent).toContain('쓰고 나서');
     expect(screen.getByRole('button', { name: ASK })).toBeTruthy();
-    expect(screen.queryByRole('button', { name: AGAIN })).toBeNull();
+  });
+});
+
+/*
+  ⚠️ **눌렀는지 모르겠다는 말이 나오지 않게 한다**(사용자 지적 2026-09-04 — 이 개편의 출발점).
+  알약이 체크 표식으로 바뀌는 것만으로는 눈을 떼고 있던 사람이 놓친다. 예약이 확정된 **그 순간에만**
+  짧은 움직임을 준다 — 상시 애니메이션이 아니라 1회성 신호다.
+*/
+describe('예약을 확인시킨다', () => {
+  it('예약된 순간 체크 표식에 짧은 움직임을 준다', async () => {
+    setup();
+
+    tapUsed();
+    tapConfirm();
+    answer('alreadyAgreed');
+    await screen.findByText(/18:20/);
+
+    expect(animate).toHaveBeenCalled();
+  });
+
+  /* 그냥 그려도 되는 상태 변화까지 매번 흔들지 않는다 — 움직임은 「방금 됐다」에만 붙는다. */
+  it('그냥 켜 두기만 한 화면은 흔들지 않는다', () => {
+    setup(DUE);
+
+    expect(animate).not.toHaveBeenCalled();
+  });
+
+  /* 접근성 기본 — 움직임을 줄이라고 설정한 사람에게는 안 준다(문구·표식은 그대로 바뀐다). */
+  it('움직임을 줄이는 설정이면 움직이지 않는다', async () => {
+    reduceMotion = true;
+    setup();
+
+    tapUsed();
+    tapConfirm();
+    answer('alreadyAgreed');
+    await screen.findByText(/18:20/);
+
+    expect(animate).not.toHaveBeenCalled();
   });
 });
 
@@ -277,7 +394,7 @@ describe('승인 대기 — 알림이 간 뒤', () => {
 
   상태는 `oilState(nextAt, new Date())` 한 줄로 정해지는데, 시간이 흐르는 것은 리렌더를 일으키지
   않는다 — 그래서 알림이 실제로 도착해도 카드는 마운트 당시의 「예약됨」에 **고착**했다. 그
-  상태에서는 「다음 알림 받기」가 안 뜨니 사용자에게는 **다음 알림을 켤 방법이 아예 없었다.**
+  상태에서는 다음 알림을 켤 방법이 아예 없었다.
 
   「처음엔 되고 두 번째부터 안 되는」 정체가 이것이다: 첫 알림은 대개 앱이 죽은 뒤에 와서
   콜드 스타트가 카드를 새로 마운트해 주지만(`readInitialTab`이 오늘 탭으로 보낸다), 앱이 살아
@@ -299,7 +416,7 @@ describe('시각이 흐르면 상태도 흐른다', () => {
       vi.advanceTimersByTime(3 * 60 * 60 * 1000 + 2000);
     });
 
-    expect(screen.getByRole('button', { name: AGAIN })).toBeTruthy();
+    expect(screen.getByRole('button', { name: ASK })).toBeTruthy();
     expect(sub().textContent).toContain('알림을 보냈어요');
   });
 
@@ -311,8 +428,8 @@ describe('시각이 흐르면 상태도 흐른다', () => {
       document.dispatchEvent(new Event('visibilitychange'));
     });
 
-    expect(screen.getByRole('button', { name: AGAIN })).toBeTruthy();
-    // 지나간 시각을 「다음 알림」이라 계속 말하고 있으면 그 자체가 거짓말이다.
+    expect(screen.getByRole('button', { name: ASK })).toBeTruthy();
+    // 지나간 시각을 「알려드릴게요」라 계속 말하고 있으면 그 자체가 거짓말이다.
     expect(sub().textContent).not.toContain('18:20');
   });
 
@@ -364,11 +481,13 @@ describe('오늘 탭의 파란 자리를 나눠 갖지 않는다', () => {
     그때마다 파란 버튼을 만들면 「지금 할 일」의 신호가 흐려진다.
   */
   it.each([
-    ['미예약', undefined],
-    ['예약됨', DUE],
-    ['승인 대기', PAST],
-  ])('%s 상태에 채운 파란 버튼이 없다', (_s, seed) => {
+    ['미예약', undefined, false],
+    ['2단계', undefined, true],
+    ['예약됨', DUE, false],
+    ['승인 대기', PAST, false],
+  ])('%s 상태에 채운 파란 버튼이 없다', (_s, seed, step2) => {
     const { container } = setup(seed);
+    if (step2) tapUsed();
 
     const filled = [...container.querySelectorAll('[style]')].filter((el) =>
       (el.getAttribute('style') ?? '').includes('background: var(--blue)'),
@@ -399,11 +518,13 @@ describe('개인정보 고지 — 상시', () => {
     상태와 무관하게 늘 보이는 것이 조건이다 — 예약에 성공해야 고지를 보여주는 건 앞뒤가 안 맞는다.
   */
   it.each([
-    ['미예약', undefined],
-    ['예약됨', DUE],
-    ['승인 대기', PAST],
-  ])('%s 상태에서도 무엇이 서버에 남는지 말한다', (_s, seed) => {
+    ['미예약', undefined, false],
+    ['2단계', undefined, true],
+    ['예약됨', DUE, false],
+    ['승인 대기', PAST, false],
+  ])('%s 상태에서도 무엇이 서버에 남는지 말한다', (_s, seed, step2) => {
     setup(seed);
+    if (step2) tapUsed();
 
     expect(screen.getByText(/알림 시각만 서버에 잠시 저장되고 알림이 가면 지워져요/)).toBeTruthy();
   });

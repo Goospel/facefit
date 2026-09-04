@@ -150,9 +150,18 @@ export function Home({
           >
             <span style={{ flex: 1 }}>
               <span style={{ display: 'block', fontSize: 15, fontWeight: 600, color: 'var(--text)' }}>아침 알림</span>
+              {/*
+                ⚠️ `textWrap: 'balance'` — **오른쪽 알약이 폭을 먹어 이 줄은 늘 두 줄이 된다.**
+                균등하게 안 나누면 「알림을 켜지 않았어요 · 눌러서 언제든 켤 수」 뒤에 「있어요」만
+                외톨이로 남는다. 브라우저가 폭을 재서 나누므로 기기가 달라져도 알아서 맞는다
+                (`index.css`의 `keep-all`이 어절을 안 쪼개는 것과 한 벌 — 그쪽은 「어디서 꺾느냐」,
+                이쪽은 「몇 대 몇으로 나누느냐」다).
+
+                미지원 웹뷰에서는 **그냥 무시된다** — 폴백을 따로 안 둔 이유이자 둘 수도 없는 이유다.
+              */}
               <span
                 data-testid="notify-sub"
-                style={{ display: 'block', fontSize: 13, marginTop: 2, fontWeight: notifyResult ? 600 : 400, color: TONE_COLOR[notify.tone] }}
+                style={{ display: 'block', fontSize: 13, marginTop: 2, fontWeight: notifyResult ? 600 : 400, color: TONE_COLOR[notify.tone], textWrap: 'balance' }}
               >
                 {notify.sub}
               </span>
