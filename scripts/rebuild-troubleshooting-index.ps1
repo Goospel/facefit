@@ -22,6 +22,7 @@
 #   2. frontmatter에 summary 존재
 #   3. 4필드(증상/원인/해결/재발방지) 존재 — frontmatter `guard:`가 비어 있지 않으면 면제
 #      (가드로 막은 함정은 summary:+guard: 두 줄 항목 — 설계 ~/.claude/docs/2026-09-24-troubleshooting-reform-design.md B-2)
+#      `legacy:`도 면제 — 단일 파일에서 원문 그대로 옮긴 옛 항목 표시. 새 항목에는 쓰지 않는다.
 #   4. T번호 중복 없음
 # 항목 0건은 통과다(빈 목차) — 설치 직후 첫 커밋이 막히던 닭-달걀을 없앴다.
 #
@@ -117,12 +118,13 @@ foreach ($f in $files) {
         continue
     }
 
-    $summary = ''; $promoted = ''; $guard = ''
+    $summary = ''; $promoted = ''; $guard = ''; $legacy = ''
     for ($i = $fmStart + 1; $i -lt $fmEnd; $i++) {
         $line = $lines[$i]
         if     ($line -match '^summary:\s*(.+)$')  { $summary  = Remove-YamlQuotes $matches[1].Trim() }
         elseif ($line -match '^promoted:\s*(.+)$') { $promoted = Remove-YamlQuotes $matches[1].Trim() }
         elseif ($line -match '^guard:\s*(.+)$')    { $guard    = Remove-YamlQuotes $matches[1].Trim() }
+        elseif ($line -match '^legacy:\s*(.+)$')   { $legacy   = Remove-YamlQuotes $matches[1].Trim() }
     }
 
     if (-not $summary) {
@@ -149,9 +151,9 @@ foreach ($f in $files) {
         continue
     }
 
-    # ── 4. 4필드 스키마 (guard 항목은 면제) ────────────────────────────────
+    # ── 4. 4필드 스키마 (guard·legacy 항목은 면제) ─────────────────────────
     $missing = @()
-    if (-not $guard) {
+    if (-not $guard -and -not $legacy) {
         foreach ($field in @('증상', '원인', '해결', '재발방지')) {
             if ($text -notmatch "\*\*$field\*\*") { $missing += $field }
         }

@@ -4,6 +4,11 @@
 > 앞으로 할 일은 [`plan.md`](plan.md), 함정은 [`claude-docs/troubleshooting.md`](claude-docs/troubleshooting.md).
 > PR 번호는 적지 않는다 — 미래에 확정되는 값이라 stale이 조용히 쌓인다. 찾으려면 제목으로 `git log --grep`.
 
+## 2026-09-25 · 트러블슈팅 검사기 최신 사본 전파 — legacy: 면제
+
+- 왜: 전역 템플릿 검사기가 `legacy:` 표시 항목(단일 파일에서 원문 그대로 옮긴 옛 항목)을 4필드 스키마에서 면제하도록 바뀌었다. 옛 사본은 그런 항목을 「필수 필드 누락」으로 거부한다.
+- 무엇을: `scripts/rebuild-troubleshooting-index.ps1`만 템플릿 최신본으로 교체(`.githooks/pre-commit`은 이미 동일). `-Check` 결과 OK(21건) 유지.
+
 ## 2026-09-25 · 트러블슈팅 검사기 최신 사본 전파
 
 - 왜: 전역 템플릿이 0건 허용·`guard:` 두 줄 항목(4필드 면제)으로 바뀌었는데, 옛 사본은 guard 항목을 「필수 필드 누락」으로 거부한다.
