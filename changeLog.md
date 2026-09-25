@@ -4,6 +4,11 @@
 > 앞으로 할 일은 [`plan.md`](plan.md), 함정은 [`claude-docs/troubleshooting.md`](claude-docs/troubleshooting.md).
 > PR 번호는 적지 않는다 — 미래에 확정되는 값이라 stale이 조용히 쌓인다. 찾으려면 제목으로 `git log --grep`.
 
+## 2026-09-25 · 트러블슈팅 검사기 최신 사본 전파
+
+- 왜: 전역 템플릿이 0건 허용·`guard:` 두 줄 항목(4필드 면제)으로 바뀌었는데, 옛 사본은 guard 항목을 「필수 필드 누락」으로 거부한다.
+- 무엇을: `scripts/rebuild-troubleshooting-index.ps1`·`.githooks/pre-commit`을 템플릿 최신본으로 교체(프로젝트 고유 수정 없음, HUB·SCRIPT 경로 동일). 목차 재생성 결과 변화 없음(21건).
+
 ## 2026-09-04 · 20260904-20 라이브
 
 17시 10분, 카드 수정 셋이 사용자에게 나갔다. 16시 22분 제출에서 48분 — 검수는 아홉 번 연속으로

@@ -2,7 +2,7 @@
 #
 # ⚠️ 이 파일은 반드시 UTF-8 **BOM 포함**으로 저장해야 한다. PowerShell 5.1은 BOM 없는
 #    UTF-8을 시스템 ANSI 코드페이지(CP949)로 잘못 읽어 아래 한글 리터럴이 깨지고 파싱
-#    에러가 난다(T-026 계열). 편집기/도구로 다시 저장할 때 BOM이 떨어지면 재부착할 것.
+#    에러가 난다(moodiary T-026 계열). 편집기/도구로 다시 저장할 때 BOM이 떨어지면 재부착할 것.
 #
 # troubleshooting 허브의 목차를 각 항목 파일의 frontmatter에서 자동 재생성한다.
 #
@@ -17,18 +17,17 @@
 # 2026-07-10). 단일 출처 = 각 항목의 frontmatter. 사람이 목차를 손대지 않으므로 drift가
 # 구조적으로 불가능해진다. 이 스크립트는 그 처방을 이 레포에 겨눈 것이다.
 #
-# 검증도 겸한다(fail-close, exit 1) — 규약에 검사기를 같이 만든다(T-041). 검사 항목:
+# 검증도 겸한다(fail-close, exit 1) — 규약에 검사기를 같이 만든다(Hospital-sim T-041). 검사 항목:
 #   1. 파일명 T-###.md ↔ H1 `# T-### · 제목`의 번호 일치
 #   2. frontmatter에 summary 존재
-#   3. 4필드(증상/원인/해결/재발방지) 존재 — 항목 길이의 브레이크(아래)
+#   3. 4필드(증상/원인/해결/재발방지) 존재 — frontmatter `guard:`가 비어 있지 않으면 면제
+#      (가드로 막은 함정은 summary:+guard: 두 줄 항목 — 설계 ~/.claude/docs/2026-09-24-troubleshooting-reform-design.md B-2)
 #   4. T번호 중복 없음
+# 항목 0건은 통과다(빈 목차) — 설치 직후 첫 커밋이 막히던 닭-달걀을 없앴다.
 #
-# (3)이 왜 검사인가: 실측상 4필드 스키마가 있는 troubleshooting은 T-027~T-046 스무 개가
-# 전부 9줄 근처(9,9,9,9,9,9,9,9,9,9,9,10,9,9,11,9,9,9,9,6)인데, 스키마가 없는 changeLog는
-# 항목당 중앙값이 555바이트 → 3,784바이트로 **6.8배** 자랐다. 같은 저자·같은 31시간·같은
-# 단일 md인데 결과가 정반대다. 파일을 쪼개면 파일당 크기 압력이 사라지므로 스키마가 그
-# 자리를 대신해야 한다. (스키마도 완전하진 않다 — 줄 수는 잠기지만 바이트는 1.6배 늘었다.
-# 필드 개수는 잠그고 필드 길이는 안 잠근다.)
+# (3)은 형식 검사일 뿐 길이를 잠그지 않는다. 도입 당시엔 길이 브레이크로 기대했지만
+# (Hospital-sim T-027~T-046이 전부 9줄 근처), 이관 뒤 추가된 항목은 중앙값이 +35~40%
+# 길다(2026-09-24 실측). 필드 개수는 강제하고 필드 길이는 안 잠근다.
 #
 # 사용:
 #   rebuild-troubleshooting-index.ps1 -HubPath claude-docs/troubleshooting.md
@@ -36,7 +35,7 @@
 #
 # -Check 는 파일을 수정하지 않고 인덱스가 최신인지만 본다(stale이면 exit 1). pre-commit용.
 #
-# 한글 안전: 읽기·쓰기 모두 UTF-8(BOM 없음) 명시 — 대상 md 파일들의 기존 인코딩(T-026 정신).
+# 한글 안전: 읽기·쓰기 모두 UTF-8(BOM 없음) 명시 — 대상 md 파일들의 기존 인코딩(moodiary T-026 정신).
 [CmdletBinding()]
 param(
     [Parameter(Mandatory = $true)]
@@ -58,7 +57,7 @@ function Write-Problem {
 function Remove-YamlQuotes {
     <#
     YAML 인용부호(값 **전체**를 감싼 것)만 벗긴다.
-    ⚠️ 순진한 .Trim('"')를 쓰면 안 된다 — T-040의 요약이 `"관계로 잠근다"면서 …`처럼
+    ⚠️ 순진한 .Trim('"')를 쓰면 안 된다 — Hospital-sim T-040의 요약이 `"관계로 잠근다"면서 …`처럼
        **따옴표로 시작**하는데 Trim이 그 앞따옴표를 잘라먹는다(마이그레이션에서 실제로 났다).
        그래서 '앞뒤 둘 다 따옴표' + '중간에 따옴표 없음'일 때만 감싼 것으로 본다.
     #>
@@ -118,11 +117,12 @@ foreach ($f in $files) {
         continue
     }
 
-    $summary = ''; $promoted = ''
+    $summary = ''; $promoted = ''; $guard = ''
     for ($i = $fmStart + 1; $i -lt $fmEnd; $i++) {
         $line = $lines[$i]
         if     ($line -match '^summary:\s*(.+)$')  { $summary  = Remove-YamlQuotes $matches[1].Trim() }
         elseif ($line -match '^promoted:\s*(.+)$') { $promoted = Remove-YamlQuotes $matches[1].Trim() }
+        elseif ($line -match '^guard:\s*(.+)$')    { $guard    = Remove-YamlQuotes $matches[1].Trim() }
     }
 
     if (-not $summary) {
@@ -149,10 +149,12 @@ foreach ($f in $files) {
         continue
     }
 
-    # ── 4. 4필드 스키마 ────────────────────────────────────────────────────
+    # ── 4. 4필드 스키마 (guard 항목은 면제) ────────────────────────────────
     $missing = @()
-    foreach ($field in @('증상', '원인', '해결', '재발방지')) {
-        if ($text -notmatch "\*\*$field\*\*") { $missing += $field }
+    if (-not $guard) {
+        foreach ($field in @('증상', '원인', '해결', '재발방지')) {
+            if ($text -notmatch "\*\*$field\*\*") { $missing += $field }
+        }
     }
     if ($missing.Count -gt 0) {
         $problems += "$rel · 필수 필드 누락: $($missing -join ', ') (형식: - **증상**: ...)"
@@ -163,6 +165,7 @@ foreach ($f in $files) {
         Id       = $fileId
         Summary  = $summary
         Promoted = $promoted
+        Guard    = $guard
         Rel      = $rel
     }
 }
@@ -177,12 +180,6 @@ if ($problems.Count -gt 0) {
     Write-Host "troubleshooting 항목 검사 실패 — $($problems.Count)건" -ForegroundColor Red
     foreach ($p in $problems) { Write-Problem $p }
     Write-Host ''
-    exit 1
-}
-
-if ($entries.Count -eq 0) {
-    Write-Host 'INDEX-CHECK: INVALID (no entries)'
-    Write-Host "항목이 하나도 없다: $itemsDir" -ForegroundColor Red
     exit 1
 }
 
@@ -209,6 +206,7 @@ $idx = [System.Collections.ArrayList]@()
 foreach ($e in ($entries | Sort-Object Id -Descending)) {
     $line = "- [$($e.Id)]($($e.Rel)) · $($e.Summary)"
     if ($e.Promoted) { $line += " **→ $($e.Promoted)**" }
+    elseif ($e.Guard) { $line += " **→ 가드: $($e.Guard)**" }
     [void]$idx.Add($line)
 }
 
